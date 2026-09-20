@@ -1,0 +1,27 @@
+{
+  "title": "KevinDecisionSchema",
+  "description": "RLCD constrained likelihood scoring schema for browser decision making",
+  "type": "object",
+  "properties": {
+    "action": {
+      "type": "string",
+      "enum": [
+        "click",
+        "type",
+        "navigate",
+        "scroll",
+        "extract",
+        "back",
+        "done"
+      ]
+    },
+    "searchIntent": {
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "action",
+    "searchIntent"
+  ],
+  "additionalProperties": false
+}

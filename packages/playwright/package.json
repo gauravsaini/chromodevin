@@ -1,0 +1,16 @@
+{
+  "name": "@kevin/playwright",
+  "version": "0.1.0",
+  "description": "High-speed on-device browser automation plugin for Playwright",
+  "type": "module",
+  "main": "./index.js",
+  "exports": {
+    ".": "./index.js",
+    "./driver": "./driver.js",
+    "./cdp": "./cdp-perception.js",
+    "./loader": "./node-loader.js"
+  },
+  "peerDependencies": {
+    "playwright": ">=1.40.0"
+  }
+}

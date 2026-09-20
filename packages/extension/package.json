@@ -1,0 +1,6 @@
+{
+  "name": "@kevin/extension",
+  "version": "0.1.0",
+  "description": "Kevin Chrome MV3 Extension UI Client",
+  "type": "module"
+}

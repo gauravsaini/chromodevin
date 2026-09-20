@@ -1,0 +1,12 @@
+{
+  "name": "@kevin/daemon",
+  "version": "0.1.0",
+  "description": "Local WebSocket daemon for Kevin browser automation and Chrome Extension background delegation",
+  "type": "module",
+  "main": "./index.js",
+  "exports": {
+    ".": "./index.js",
+    "./server": "./server.js",
+    "./client": "./client.js"
+  }
+}

@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="100%" height="100%">
+  <defs>
+    <!-- Kevin Brand Crimson Red Gradient -->
+    <linearGradient id="kevinRed" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FF2E4D"/>
+      <stop offset="45%" stop-color="#E60026"/>
+      <stop offset="100%" stop-color="#9E0016"/>
+    </linearGradient>
+
+    <!-- Deep Ambient Glow Filter -->
+    <filter id="kevinGlow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="12" stdDeviation="22" flood-color="#E60026" flood-opacity="0.38"/>
+    </filter>
+  </defs>
+
+  <g filter="url(#kevinGlow)">
+    <path fill="url(#kevinRed)" d="
+      M 322.0,65.7
+      L 387.8,103.7
+      L 387.8,179.7
+      L 322.0,217.7
+      C 306,234 292,244 277,246
+      A 34,34 0 1,1 277,266
+      C 292,268 306,278 322.0,294.3
+      L 387.8,332.3
+      L 387.8,408.3
+      L 322.0,446.3
+      L 256.2,408.3
+      C 220,375 188,342 124.0,332.0
+      L 58.2,294.0
+      L 58.2,218.0
+      L 124.0,180.0
+      C 188,170 220,137 256.2,103.7
+      Z
+    " />
+  </g>
+</svg>

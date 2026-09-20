@@ -1,0 +1,17 @@
+{
+  "model_id": "notnotsamuel/LFM2.5-350M-RLCD",
+  "name": "LFM2.5-350M-RLCD",
+  "family": "rlcd",
+  "base_model": "LiquidAI/LFM2.5-350M",
+  "contract": "constrained-likelihood",
+  "question_types": [
+    "choice",
+    "noul"
+  ],
+  "dtype": "q4",
+  "device": "webgpu",
+  "onnx_file": "model_q4.onnx",
+  "tokenizer_file": "tokenizer.json",
+  "created_by": "kevin-exporter",
+  "schema_guarantee": "100% valid JSON payload via System 1 scoring"
+}

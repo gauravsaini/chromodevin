@@ -1,0 +1,15 @@
+{
+  "name": "@kevin/core",
+  "version": "0.1.0",
+  "description": "Kevin Core — Pure 8-box functional decision engine for fast browser automation",
+  "type": "module",
+  "main": "./index.js",
+  "exports": {
+    ".": "./index.js",
+    "./agent": "./agent/agent-runtime.js",
+    "./ai": "./ai/decision-model.js",
+    "./perception": "./perception/decision-engine.js",
+    "./security": "./security/risk-classifier.js",
+    "./actions": "./actions/browser-engine.js"
+  }
+}

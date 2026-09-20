@@ -1,0 +1,77 @@
+{
+  "name": "@gauravsaini/kevin",
+  "version": "0.1.0",
+  "private": true,
+  "workspaces": [
+    "packages/*"
+  ],
+  "description": "Local-first autonomous voice & text browser agent powered by WebGPU, on-device decision models, and Playwright",
+  "type": "module",
+  "main": "./dist/core/index.js",
+  "types": "./dist/packages/core/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/core/index.js",
+      "types": "./dist/packages/core/index.d.ts"
+    },
+    "./core": {
+      "import": "./dist/core/index.js",
+      "types": "./dist/packages/core/index.d.ts"
+    },
+    "./playwright": {
+      "import": "./dist/playwright/index.js",
+      "types": "./dist/packages/playwright/index.d.ts"
+    },
+    "./driver": {
+      "import": "./dist/playwright/driver.js",
+      "types": "./dist/packages/playwright/driver.d.ts"
+    },
+    "./mcp": {
+      "import": "./dist/mcp/index.js",
+      "types": "./dist/packages/mcp/index.d.ts"
+    },
+    "./daemon": {
+      "import": "./dist/daemon/index.js",
+      "types": "./dist/packages/daemon/index.d.ts"
+    }
+  },
+  "scripts": {
+    "build": "tsup && tsc --emitDeclarationOnly",
+    "typecheck": "tsc --noEmit",
+    "test": "tsx --test tests/**/*.test.ts",
+    "benchmark": "tsx scripts/benchmark-agent.ts",
+    "check": "tsx tests/check-syntax.ts",
+    "harness": "tsx scripts/serve-harness.ts",
+    "verify": "tsx tests/check-syntax.ts && tsx --test tests/**/*.test.ts && tsx tests/verify-manifest.ts"
+  },
+  "keywords": [
+    "chrome-extension",
+    "gemini-nano",
+    "browser-agent",
+    "voice-agent",
+    "web-perception",
+    "playwright",
+    "playwright-plugin"
+  ],
+  "author": "Gaurav Saini",
+  "license": "MIT",
+  "dependencies": {
+    "@huggingface/transformers": "^4.3.0"
+  },
+  "peerDependencies": {
+    "playwright": ">=1.40.0"
+  },
+  "peerDependenciesMeta": {
+    "playwright": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.2",
+    "@types/ws": "^8.18.1",
+    "playwright": "^1.63.0",
+    "tsup": "^8.5.1",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2"
+  }
+}

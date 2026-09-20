@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Kevin Agent - WebGPU Decision Pipeline Harness</title>
+  <link rel="stylesheet" href="harness.css">
+  <script type="importmap">
+  {
+    "imports": {
+      "@huggingface/transformers": "https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.3.3/+esm"
+    }
+  }
+  </script>
+</head>
+<body>
+  <div class="harness-app">
+    <!-- Top Header Bar -->
+    <header class="harness-header">
+      <div class="header-left">
+        <span class="logo-badge">⚡</span>
+        <div class="header-title-group">
+          <h1>Kevin WebGPU Decision Harness</h1>
+          <span class="header-subtitle">Browser Tab Testbed for Real WebGPU Decision Models & End-to-End Pipeline</span>
+        </div>
+      </div>
+      <div class="header-right">
+        <div id="webgpu-badge" class="badge checking" title="WebGPU Adapter Status">WebGPU: Checking...</div>
+        <div id="model-status-badge" class="badge idle" title="Loaded Model Status">Model: Unloaded</div>
+      </div>
+    </header>
+
+    <!-- Model Download Progress Banner -->
+    <div id="model-progress-bar-container" class="model-progress-container hidden">
+      <div class="progress-info">
+        <span id="model-progress-label">Loading WebGPU weights...</span>
+        <span id="model-progress-percent">0%</span>
+      </div>
+      <div class="progress-track">
+        <div id="model-progress-fill" class="progress-fill"></div>
+      </div>
+    </div>
+
+    <!-- Main 2-Column Split Workspace -->
+    <div class="harness-workspace">
+      <!-- Left Column: Inputs, Configuration & Assertions -->
+      <section class="harness-panel input-panel">
+        <div class="panel-header">
+          <h2>1. Mock Input & Harness Setup</h2>
+          <div class="preset-selector-group">
+            <label for="scenario-presets">Preset:</label>
+            <select id="scenario-presets" class="select-control">
+              <option value="preset-search">🔍 1. Wikipedia / Search Docs</option>
+              <option value="preset-ecommerce">🛒 2. E-Commerce "Add to Cart"</option>
+              <option value="preset-multistep">📋 3. Compound Multi-Step Form</option>
+              <option value="preset-risk">⚠️ 4. High-Risk Account Action</option>
+              <option value="preset-pronoun">👆 5. Pronoun "Second One" Resolution</option>
+              <option value="preset-custom">✏️ 6. Custom Snapshot</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="panel-body">
+          <!-- Command Input -->
+          <div class="form-group">
+            <label for="goal-input"><strong>User Command / Goal:</strong></label>
+            <textarea id="goal-input" class="textarea-control" rows="2" placeholder="e.g. Open wikipedia.org and search for WebGPU then click search"></textarea>
+          </div>
+
+          <!-- Model & Execution Mode Config -->
+          <div class="config-grid">
+            <div class="form-group">
+              <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+                <label for="model-select"><strong>Decision Model:</strong></label>
+                <button id="preload-model-btn" class="btn-tiny" style="color:var(--primary);" title="Preload weights to WebGPU">⚡ Preload Model</button>
+              </div>
+              <select id="model-select" class="select-control">
+                <option value="receptron/laya-onnx" selected>receptron/laya-onnx (Default /v1/systemone)</option>
+                <option value="onnx-community/LFM2.5-350M-ONNX">onnx-community/LFM2.5-350M-ONNX</option>
+                <option value="notnotsamuel/LFM2.5-350M-RLCD">notnotsamuel/LFM2.5-350M-RLCD</option>
+                <option value="jaredpalmer/kev-0.6b">jaredpalmer/kev-0.6b (/v1/systemone)</option>
+              </select>
+              <div style="margin-top: 6px; font-size: 11.5px; display: flex; align-items: center; gap: 6px;">
+                <input type="checkbox" id="autoload-model-checkbox" checked />
+                <label for="autoload-model-checkbox" style="cursor: pointer; color: var(--text-muted);">Autoload model on start and selection</label>
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label for="mode-select"><strong>Inference Engine:</strong></label>
+              <select id="mode-select" class="select-control">
+                <option value="decision" selected>WebGPU System 1 Decision Model (Sole Engine - No Fallback)</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- Mock Snapshot Editor -->
+          <div class="form-group">
+            <div class="editor-header">
+              <label for="snapshot-editor"><strong>Mock DOM Snapshot (JSON):</strong></label>
+              <button id="format-json-btn" class="btn-tiny" title="Format JSON">Format JSON</button>
+            </div>
+            <textarea id="snapshot-editor" class="textarea-control json-editor" rows="11" spellcheck="false"></textarea>
+          </div>
+
+          <!-- Assertion Gate Expectations -->
+          <div class="assertions-section">
+            <div class="assertion-header">
+              <h3>2. Harness Assertion Gate</h3>
+              <span class="assertion-hint">Define expectations to verify pipeline correctness</span>
+            </div>
+            <div class="assertion-grid">
+              <div class="form-group">
+                <label for="expect-subgoals">Expected Sub-Goals Count / List:</label>
+                <input id="expect-subgoals" type="text" class="input-control" placeholder="e.g. 2 or search, click" />
+              </div>
+              <div class="form-group">
+                <label for="expect-action">Expected 1st Action Type:</label>
+                <select id="expect-action" class="select-control">
+                  <option value="">-- Any Action --</option>
+                  <option value="click">click</option>
+                  <option value="type">type</option>
+                  <option value="scroll">scroll</option>
+                  <option value="navigate">navigate</option>
+                  <option value="extract">extract</option>
+                  <option value="done">done</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label for="expect-target">Expected Target ID:</label>
+                <input id="expect-target" type="text" class="input-control" placeholder="e.g. cd-1 or input" />
+              </div>
+              <div class="form-group">
+                <label for="expect-risk">Max Permitted Risk:</label>
+                <select id="expect-risk" class="select-control">
+                  <option value="">-- Any Risk --</option>
+                  <option value="low">low (Standard)</option>
+                  <option value="medium">medium</option>
+                  <option value="high">high (Requires Confirmation)</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+          <!-- Action Buttons -->
+          <div class="panel-actions">
+            <button id="run-harness-btn" class="btn btn-primary">
+              <span class="btn-icon">⚡</span> Run WebGPU Pipeline Harness
+            </button>
+            <button id="reset-harness-btn" class="btn btn-secondary">
+              🔄 Reset Form
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <!-- Right Column: Visual Pipeline Flow, Step Traces & Output Verification -->
+      <section class="harness-panel output-panel">
+        <div class="panel-header">
+          <h2>3. Real WebGPU Execution & Assertion Gate</h2>
+          <div id="harness-result-badge" class="badge idle">Ready</div>
+        </div>
+
+        <div class="panel-body">
+          <!-- Architecture Flow Representation -->
+          <div class="pipeline-flow-diagram">
+            <div id="node-decomposer" class="flow-node">
+              <div class="node-title">Decomposer</div>
+              <div class="node-sub">sub-goals</div>
+            </div>
+            <div class="flow-arrow">➔</div>
+            <div id="node-perception" class="flow-node">
+              <div class="node-title">Perception</div>
+              <div class="node-sub">entity & DOM</div>
+            </div>
+            <div class="flow-arrow">➔</div>
+            <div id="node-decision" class="flow-node">
+              <div class="node-title">Decision Model</div>
+              <div class="node-sub">WebGPU System 1</div>
+            </div>
+            <div class="flow-arrow">➔</div>
+            <div id="node-security" class="flow-node">
+              <div class="node-title">Security Gate</div>
+              <div class="node-sub">schema & risk</div>
+            </div>
+            <div class="flow-arrow">➔</div>
+            <div id="node-action" class="flow-node">
+              <div class="node-title">Browser Action</div>
+              <div class="node-sub">DOM execute</div>
+            </div>
+          </div>
+
+          <!-- Assertion Results Banner -->
+          <div id="assertion-result-box" class="assertion-result-box hidden">
+            <div class="assertion-result-header">
+              <span id="assertion-status-icon">✓</span>
+              <strong id="assertion-status-text">All Assertion Gates Passed</strong>
+            </div>
+            <ul id="assertion-errors-list" class="assertion-errors-list"></ul>
+          </div>
+
+          <!-- Simulated DOM Visual Preview Sandbox -->
+          <div class="preview-box">
+            <div class="preview-header">
+              <span>Simulated DOM Viewport Preview</span>
+              <span id="preview-url" class="preview-url-badge">-</span>
+            </div>
+            <div id="dom-preview-canvas" class="dom-preview-canvas">
+              <div class="preview-placeholder">Elements from mock snapshot will render here with active target highlights.</div>
+            </div>
+          </div>
+
+          <!-- Step Trace Cards List -->
+          <div class="trace-cards-section">
+            <div class="section-title-row">
+              <h3>Detailed Pipeline Execution Trace</h3>
+              <span id="telemetry-latency" class="telemetry-pill">Latency: -</span>
+            </div>
+            <div id="trace-cards-container" class="trace-cards-container">
+              <div class="empty-trace-notice">Click "Run WebGPU Pipeline Harness" to execute the pipeline with the selected decision model.</div>
+            </div>
+          </div>
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <script type="module" src="harness.js"></script>
+</body>
+</html>

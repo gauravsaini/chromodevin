@@ -1,0 +1,18 @@
+{
+  "model_id": "jaredpalmer/kev-0.6b",
+  "name": "kev-0.6b",
+  "family": "kev",
+  "base_model": "Qwen/Qwen3-0.6B-Base",
+  "contract": "/v1/systemone",
+  "question_types": [
+    "choice",
+    "noul",
+    "score"
+  ],
+  "dtype": "q4",
+  "device": "webgpu",
+  "onnx_file": "model_q4.onnx",
+  "tokenizer_file": "tokenizer.json",
+  "created_by": "kevin-exporter",
+  "schema_guarantee": "100% valid JSON payload via System 1 scoring"
+}

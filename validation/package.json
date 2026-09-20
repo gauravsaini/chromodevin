@@ -1,0 +1,13 @@
+{
+  "name": "kevin-validation",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "description": "Independent validation of Kevin MCP and resilient automation claims",
+  "scripts": {
+    "validate": "node validate-all.mjs",
+    "validate:mcp": "node validate-mcp.mjs",
+    "validate:primitives": "node validate-primitives.mjs",
+    "validate:e2e": "node validate-e2e.mjs"
+  }
+}

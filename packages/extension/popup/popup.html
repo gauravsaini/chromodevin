@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Kevin Agent</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="app-wrapper">
+    <!-- Compact Top Header -->
+    <header class="app-header">
+      <div class="header-brand">
+        <span class="brand-icon">⚡</span>
+        <div class="brand-titles">
+          <span class="brand-name">Kevin</span>
+          <span class="brand-tagline">Autonomous Browser Agent</span>
+        </div>
+      </div>
+      <div class="header-tools">
+        <div id="ai-status-badge" class="badge checking" title="AI Backend Engine">Checking...</div>
+        <button id="open-harness-btn" class="header-btn" title="Open WebGPU Decision Harness" aria-label="Open Harness">🧪</button>
+        <button id="tts-toggle-btn" class="header-btn" title="Toggle Spoken Feedback" aria-label="Toggle Speech">🔊</button>
+      </div>
+    </header>
+
+    <main class="app-main">
+      <!-- Model Download Progress (shown on first use) -->
+      <section id="model-download-section" class="model-download-section hidden">
+        <div class="model-download-header">
+          <span class="model-download-icon">🧠</span>
+          <span id="model-download-text">Downloading AI model...</span>
+        </div>
+        <div class="model-download-bar-bg">
+          <div id="model-download-bar" class="model-download-bar-fill"></div>
+        </div>
+      </section>
+
+      <!-- Active Web Tab Context Strip -->
+      <section class="tab-context-strip">
+        <div class="tab-info-group">
+          <span class="tab-status-dot" id="tab-status-dot"></span>
+          <div class="tab-details">
+            <span id="page-title" class="tab-title" title="Target Web Tab">Connecting to active tab...</span>
+            <span id="page-url" class="tab-url" title="Web URL">-</span>
+          </div>
+        </div>
+        <div class="tab-actions-group">
+          <select id="open-tabs-select" class="open-tabs-select" title="Remembered Open Tabs" aria-label="Switch Active Tab">
+            <option value="" disabled selected>Tabs (0)</option>
+          </select>
+          <span id="element-count" class="meta-tag">0 elements</span>
+          <button id="refresh-tab-btn" class="icon-action-btn" title="Rescan Active Web Tab" aria-label="Rescan Tab">🔄</button>
+        </div>
+      </section>
+
+      <!-- Multi-Step Progress Tracker Bar (visible during run) -->
+      <section id="progress-container" class="progress-section hidden">
+        <div class="progress-header">
+          <span id="progress-stage-text">Stage 1 of 2</span>
+          <span id="progress-percentage">50%</span>
+        </div>
+        <div class="progress-bar-bg">
+          <div id="progress-bar-fill" class="progress-bar-fill"></div>
+        </div>
+        <div id="progress-subgoal" class="progress-subgoal">Executing sub-goal...</div>
+      </section>
+
+      <!-- Quick Action Command Chips (Balanced 3-column grid, concise labels) -->
+      <section class="quick-chips-section">
+        <div class="chips-container">
+          <button class="chip-btn" data-command="Open wikipedia.org and search for WebGPU">
+            🌐 Wikipedia Search
+          </button>
+          <button class="chip-btn" data-command="Open google.com and search for AI agents">
+            🔍 Google AI News
+          </button>
+          <button class="chip-btn" data-command="Scroll down and extract page">
+            📜 Scroll & Extract
+          </button>
+        </div>
+      </section>
+
+      <!-- Command Input Area with Balanced Dual Action Controls -->
+      <section class="input-section">
+        <div class="textarea-wrapper">
+          <textarea id="command-input" rows="3" placeholder="Type a goal (e.g. 'Open wikipedia.org and search for WebGPU')..."></textarea>
+          <div id="listening-indicator" class="listening-overlay hidden">
+            <div class="sound-wave">
+              <span></span><span></span><span></span><span></span>
+            </div>
+            <span class="listening-label">Listening to voice...</span>
+          </div>
+        </div>
+
+        <div class="action-controls">
+          <button id="voice-btn" class="btn btn-voice" title="Speak goal with voice input">
+            <span class="btn-icon">🎙️</span>
+            <span id="mic-text">Voice</span>
+          </button>
+          <button id="run-btn" class="btn btn-primary" title="Execute multi-step goal">
+            <span class="btn-icon">⚡</span>
+            <span>Run Agent</span>
+          </button>
+          <button id="stop-btn" class="btn btn-danger hidden" title="Halt execution immediately">
+            <span class="btn-icon">⏹</span>
+            <span>Stop</span>
+          </button>
+        </div>
+      </section>
+
+      <!-- Execution Trace Section (Compact Collapsible Drawer) -->
+      <section class="trace-section">
+        <div class="trace-header">
+          <button id="toggle-trace-btn" class="trace-status-toggle" title="Toggle Execution Logs">
+            <span id="trace-chevron" class="chevron">▾</span>
+            <span class="trace-title">Trace</span>
+            <span id="live-status" class="trace-summary">Ready</span>
+          </button>
+          <div class="trace-actions">
+            <button id="clear-logs-btn" class="btn-subtle" title="Clear trace logs">Clear</button>
+          </div>
+        </div>
+        <div id="logs" class="trace-log-container">
+          <div class="log-entry system">Ready to assist. Enter a goal above.</div>
+        </div>
+      </section>
+    </main>
+
+    <!-- Confirmation Modal for High-Risk Actions -->
+    <div id="confirmation-modal" class="modal-overlay hidden">
+      <div class="modal-card">
+        <div class="modal-header">
+          <span class="modal-icon">⚠️</span>
+          <h3>Human Safety Confirmation</h3>
+        </div>
+        <p id="confirmation-reason" class="modal-body">This action requires human-in-the-loop verification.</p>
+        <div class="modal-actions">
+          <button id="confirm-deny-btn" class="btn btn-secondary">Cancel</button>
+          <button id="confirm-allow-btn" class="btn btn-danger-action">Proceed</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="popup.js"></script>
+</body>
+</html>

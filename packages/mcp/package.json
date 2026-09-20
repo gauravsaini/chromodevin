@@ -1,0 +1,14 @@
+{
+  "name": "@kevin/mcp",
+  "version": "0.1.0",
+  "description": "Model Context Protocol (MCP) server for fast on-device browser automation with Kevin and Playwright",
+  "type": "module",
+  "main": "./index.js",
+  "bin": {
+    "kevin-mcp": "./bin/kevin-mcp.js"
+  },
+  "exports": {
+    ".": "./index.js",
+    "./server": "./server.js"
+  }
+}
