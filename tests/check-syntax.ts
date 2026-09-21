@@ -36,7 +36,8 @@ for (const dir of targetDirs) {
 
 // Run TypeScript typecheck for all TS packages and tests
 try {
-  execSync('npx tsc --noEmit', { stdio: 'inherit' });
+  const tscBin = join(process.cwd(), 'node_modules', '.bin', 'tsc');
+  execSync(`${process.execPath} ${tscBin} --noEmit`, { stdio: 'inherit' });
 } catch (err) {
   console.error('TypeScript typecheck failed');
   process.exit(1);

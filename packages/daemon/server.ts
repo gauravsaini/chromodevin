@@ -3,10 +3,10 @@
  * Bridges Chrome MV3 Extension or external clients to headless Playwright pages.
  */
 
-import wsPkg from 'ws';
+import wsPkg, { WebSocketServer as WSS } from 'ws';
 import { createKevin } from '../playwright/index.js';
 
-const WebSocketServer = (wsPkg as any).Server || (wsPkg as any).WebSocketServer || wsPkg;
+const WebSocketServer = WSS || (wsPkg as any)?.WebSocketServer || (wsPkg as any)?.Server;
 
 export interface KevinDaemonOptions {
   port?: number;

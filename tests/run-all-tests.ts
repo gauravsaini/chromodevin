@@ -9,8 +9,10 @@ const testFiles = readdirSync('tests')
 let passed = 0;
 let failed = 0;
 
+const tsxBin = join(process.cwd(), 'node_modules', '.bin', 'tsx');
+
 for (const file of testFiles) {
-  const res = spawnSync('npx', ['tsx', '--test', file], { stdio: 'inherit' });
+  const res = spawnSync(process.execPath, [tsxBin, '--test', file], { stdio: 'inherit' });
   if (res.status === 0) {
     passed++;
   } else {

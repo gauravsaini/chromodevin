@@ -47,14 +47,23 @@ const FIXTURE_HTML = `<!DOCTYPE html>
 </body>
 </html>`;
 
-test('Real-Browser E2E: Kevin observes, types, searches, and clicks in headless Chrome', async () => {
+test('Real-Browser E2E: Kevin observes, types, searches, and clicks in headless Chrome', async (t) => {
   const executablePath = getChromeExecutable();
   const launchOptions = {
     headless: true,
     ...(executablePath ? { executablePath } : {})
   };
 
-  const browser = await chromium.launch(launchOptions);
+  let browser: any;
+  try {
+    browser = await chromium.launch(launchOptions);
+  } catch (err: any) {
+    if (err?.message?.includes("Executable doesn't exist")) {
+      t.skip('Chrome / Chromium browser binary not installed in test environment');
+      return;
+    }
+    throw err;
+  }
   const context = await browser.newContext();
   const page = await context.newPage();
 

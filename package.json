@@ -56,7 +56,8 @@
   "author": "Gaurav Saini",
   "license": "MIT",
   "dependencies": {
-    "@huggingface/transformers": "^4.3.0"
+    "@huggingface/transformers": "^4.3.0",
+    "ws": "^8.21.3"
   },
   "peerDependencies": {
     "playwright": ">=1.40.0"

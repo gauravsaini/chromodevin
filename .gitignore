@@ -6,3 +6,9 @@ dist/
 .env
 .agents/
 skills-lock.json
+!README.md
+*.md
+*.onnx
+*.onnx_data
+models/**/tokenizer*
+models/**/config.json

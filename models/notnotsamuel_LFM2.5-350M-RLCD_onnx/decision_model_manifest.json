@@ -6,7 +6,8 @@
   "contract": "constrained-likelihood",
   "question_types": [
     "choice",
-    "noul"
+    "noul",
+    "score"
   ],
   "dtype": "q4",
   "device": "webgpu",

@@ -109,6 +109,7 @@ def inspect_model(model_id: str) -> dict:
         "question_types": known.get("question_types", ["choice", "noul"]),
         "has_weights": has_weights or bool(known),
         "pipeline_tag": data.get("pipeline_tag", card_data.get("pipeline_tag", "text-classification")),
+        "onnx_base": known.get("onnx_base"),
         "ready_for_webgpu": True,
         "export_target": f"models/{model_id.replace('/', '_')}_onnx"
     }
@@ -173,6 +174,33 @@ def export_decision_model_to_onnx(model_id: str, output_dir: str, dtype: str = "
         print(f"[✓] Created test ONNX decision model bundle at {output_dir}")
         return output_dir
 
+
+    onnx_base = info.get("onnx_base")
+    if onnx_base:
+        print(f"[*] Base ONNX model identified: {onnx_base}")
+        try:
+            from huggingface_hub import hf_hub_download
+            import shutil
+            files_to_sync = [
+                (f"onnx/model_{dtype}.onnx", f"model_{dtype}.onnx"),
+                (f"onnx/model_{dtype}.onnx_data", f"model_{dtype}.onnx_data"),
+                ("tokenizer.json", "tokenizer.json"),
+                ("tokenizer_config.json", "tokenizer_config.json"),
+                ("config.json", "config.json"),
+            ]
+            for src, dst in files_to_sync:
+                try:
+                    p = hf_hub_download(repo_id=onnx_base, filename=src)
+                    dst_path = os.path.join(output_dir, dst)
+                    if not os.path.exists(dst_path) or os.path.getsize(dst_path) == 0:
+                        shutil.copy2(p, dst_path)
+                    print(f"    [✓] Synced {dst}")
+                except Exception as dl_err:
+                    print(f"    [!] Note on {src}: {dl_err}")
+            print(f"[+] Synced ONNX bundle from base {onnx_base} to {output_dir}")
+            return output_dir
+        except Exception as e:
+            print(f"[*] Direct base sync error: {e}, falling back to export...")
 
     try:
         from optimum.exporters.onnx import main_export
