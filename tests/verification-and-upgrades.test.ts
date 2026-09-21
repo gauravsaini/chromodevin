@@ -201,3 +201,87 @@ test('Perception: Checkbox state & Form Extraction', () => {
   assert.strictEqual(snapshot.elements[0].ariaChecked, true);
   assert.ok(snapshot.elements[0].text?.includes('Accept Terms'));
 });
+
+test('Gap A & B: verifyCondition handles bodyText and excludes toggle-all master checkboxes', () => {
+  const mockTodoSnapshot = {
+    url: 'https://todomvc.com',
+    title: 'TodoMVC',
+    bodyText: '1 item left\nAll\nActive\nCompleted\nClear completed',
+    elements: [
+      { id: 'toggle-all', role: 'checkbox', type: 'checkbox', name: 'toggle-all', text: 'Mark all as complete', checked: false, ariaChecked: false },
+      { id: 'cd-1', role: 'checkbox', type: 'checkbox', text: 'Buy milk', checked: false, ariaChecked: false }
+    ]
+  };
+
+  // 1. Counter assertion should ignore master toggle checkbox and report exactly 1 item left
+  const res = verifyCondition('1 item left', mockTodoSnapshot);
+  assert.strictEqual(res.satisfied, true);
+  assert.strictEqual(res.actual, 1);
+
+  // 2. Non-interactive span text in bodyText is matched
+  const resBody = verifyCondition("should see 'Clear completed'", {
+    url: 'https://todomvc.com',
+    title: 'TodoMVC',
+    bodyText: 'Clear completed items from list',
+    elements: []
+  });
+  assert.strictEqual(resBody.satisfied, true);
+});
+
+test('Gap D: Plan Decomposer handles expanded verb set (mark, check, uncheck, toggle, add, clear)', () => {
+  const cmd = 'Add "Buy milk" and mark "Buy milk" as completed and clear completed';
+  const parts = decomposeCommand(cmd);
+  assert.deepStrictEqual(parts, [
+    'Add "Buy milk"',
+    'mark "Buy milk" as completed',
+    'clear completed'
+  ]);
+
+  const cmd2 = 'Check item 1 and uncheck item 2 and toggle theme';
+  const parts2 = decomposeCommand(cmd2);
+  assert.deepStrictEqual(parts2, [
+    'Check item 1',
+    'uncheck item 2',
+    'toggle theme'
+  ]);
+});
+
+test('Playwright Proxy & Multi-Step Contract: act() executes single step by default vs multiStep', async () => {
+  let evaluatedSteps = 0;
+  const mockPage: any = {
+    evaluate: async () => {
+      evaluatedSteps++;
+      return {
+        url: 'https://app.test',
+        title: 'Dashboard',
+        elements: [
+          { id: 'btn-1', role: 'button', text: 'Step One' }
+        ]
+      };
+    },
+    locator: () => ({
+      first: () => ({
+        isVisible: async () => true,
+        scrollIntoViewIfNeeded: async () => {},
+        click: async () => {}
+      })
+    }),
+    customPlaywrightMethod: () => 'proxied_native_call'
+  };
+
+  const kevin = await createKevin(mockPage, { headless: true });
+
+  // 1. Proxy transparency
+  assert.strictEqual((kevin as any).customPlaywrightMethod(), 'proxied_native_call');
+
+  // 2. Single-step execution contract
+  const singleRes = await kevin.act('Click Step One and click Step Two');
+  assert.strictEqual(singleRes.success, true);
+  assert.strictEqual(singleRes.cached, false);
+
+  // 3. Multi-step execution contract
+  const multiRes = await kevin.act('Click Step One and click Step Two', { multiStep: true });
+  assert.strictEqual(multiRes.success, true);
+  assert.ok(multiRes.message?.includes('Completed'));
+});
+

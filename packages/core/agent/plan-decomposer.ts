@@ -14,9 +14,9 @@ export function decomposeCommand(command: string | any): string[] {
   // - Arrows: '-->', '->', '=>'
   // - Semicolons / Pipes / Newlines
   // - Sequential words: 'and then', 'then', 'after that'
-  // - 'and' / ',' ONLY when preceding a distinct next action command (and not 'and press enter')
+  const ACTION_VERBS = '(?:open|go\\s+to|navigate|search|find|click|select|press(?! key| escape| tab| enter)|type|scroll|extract|read|hover|delete|remove|mark|check|uncheck|toggle|add|clear|fill|submit)';
   const parts = clean
-    .split(/\s*(?:--+>|-+>|==+>|;|\n|\||,\s*and\s+then\s+|,\s*then\s+|,\s*after\s+that\s+|\band\s+then\b|\bafter\s+that\b|\bthen\b|,\s*and\s+(?=(?:open|go\s+to|navigate|search|find|click|select|press(?! key| escape| tab| enter)|type|scroll|extract|read|hover|delete|remove)\b)|\band\b(?!\s*(?:press|hit)?\s*enter\b)(?!\s*submit\b)(?=\s+(?:open|go\s+to|navigate|search|find|click|select|press(?! key| escape| tab| enter)|type|scroll|extract|read|hover|delete|remove)\b)|,\s*(?=(?:open|go\s+to|navigate|search|find|click|select|press|type|scroll|extract|read|hover|delete|remove)\b))\s*/i)
+    .split(new RegExp(`\\s*(?:--+>|-+>|==+>|;|\\n|\\||,\\s*and\\s+then\\s+|,\\s*then\\s+|,\\s*after\\s+that\\s+|\\band\\s+then\\b|\\bafter\\s+that\\b|\\bthen\\b|,\\s*and\\s+(?=${ACTION_VERBS}\\b)|\\band\\b(?!\\s*(?:press|hit)?\\s*enter\\b)(?!\\s*submit\\b)(?=\\s+${ACTION_VERBS}\\b)|,\\s*(?=${ACTION_VERBS}\\b))\\s*`, 'i'))
     .map((p) => p.trim())
     .filter(Boolean);
 

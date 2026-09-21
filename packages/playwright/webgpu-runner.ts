@@ -48,7 +48,7 @@ export class WebGPUDecisionRunner {
             return { available: false, reason: 'navigator.gpu not available' };
           }
           try {
-            const adapter = await navigator.gpu.requestAdapter();
+            const adapter = await (navigator as any).gpu.requestAdapter();
             if (!adapter) return { available: false, reason: 'No WebGPU adapter found' };
             const arch = (adapter as any).info?.architecture || (adapter as any).info?.vendor || 'WebGPU Device';
             return { available: true, architecture: arch };
@@ -138,7 +138,7 @@ export class WebGPUDecisionRunner {
         const w = (typeof window !== 'undefined' ? window : (globalThis as any)) as any;
         if (!w.__kevin_webgpu) {
           if (typeof navigator === 'undefined' || !(navigator as any).gpu) return { success: false };
-          const adapter = await navigator.gpu.requestAdapter();
+          const adapter = await (navigator as any).gpu.requestAdapter();
           if (!adapter) return { success: false };
           const device = await adapter.requestDevice();
 

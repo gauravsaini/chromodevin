@@ -155,6 +155,7 @@ const IN_PAGE_EXTRACTOR_SCRIPT = `(() => {
   return {
     url: window.location.href || '',
     title: sanitize(document.title || ''),
+    bodyText: (document.body ? (document.body.innerText || document.body.textContent || '') : '').slice(0, 10000),
     elements: items
   };
 })()`;
@@ -250,6 +251,7 @@ export async function extractPlaywrightSnapshot(page: any): Promise<DOMSnapshot>
       return {
         url: snapshot?.url || (typeof page.url === 'function' ? page.url() : ''),
         title: snapshot?.title || (typeof page.title === 'function' ? await page.title() : ''),
+        bodyText: snapshot?.bodyText || '',
         elements
       };
     } catch (err) {
@@ -259,11 +261,13 @@ export async function extractPlaywrightSnapshot(page: any): Promise<DOMSnapshot>
 
   const url = typeof page.url === 'function' ? page.url() : page.url || '';
   const title = typeof page.title === 'function' ? await page.title() : page.title || '';
+  const bodyText = page.bodyText || '';
   const elements = page.elements || [];
 
   return {
     url,
     title: sanitizeText(title),
+    bodyText,
     elements
   };
 }

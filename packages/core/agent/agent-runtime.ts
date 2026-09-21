@@ -471,7 +471,23 @@ export function verifyCondition(
     const expectedCountStr = itemsLeftMatch[1].toLowerCase();
     const expectedCount = (expectedCountStr === 'no' || expectedCountStr === 'zero') ? 0 : parseInt(expectedCountStr, 10);
 
-    // Look for counter element or text in snapshot
+    // Look for counter text in bodyText first (e.g. "1 item left" in non-interactive spans)
+    const bodyCounterMatch = (bodyText || '').match(/(\d+|no|zero)\s+(?:items?|todos?|tasks?)\s+(?:left|remaining)/i);
+    if (bodyCounterMatch) {
+      const actualCount = (bodyCounterMatch[1].toLowerCase() === 'no' || bodyCounterMatch[1].toLowerCase() === 'zero')
+        ? 0
+        : parseInt(bodyCounterMatch[1], 10);
+      return {
+        satisfied: actualCount === expectedCount,
+        reason: actualCount === expectedCount
+          ? `Counter text matched "${bodyCounterMatch[0]}"`
+          : `Expected ${expectedCount} items left, but found ${actualCount} ("${bodyCounterMatch[0]}")`,
+        actual: actualCount,
+        expected: expectedCount
+      };
+    }
+
+    // Look for counter element or text in snapshot elements
     const counterEl = elements.find((el) => /\d+\s+(?:items?|todos?|tasks?)\s+(?:left|remaining)/i.test(el.text || ''));
     if (counterEl && counterEl.text) {
       const numMatch = counterEl.text.match(/(\d+)\s+(?:items?|todos?|tasks?)\s+(?:left|remaining)/i);
@@ -488,8 +504,13 @@ export function verifyCondition(
       }
     }
 
-    // Direct active todos count from checkboxes
-    const checkboxes = elements.filter((el) => el.role === 'checkbox' || el.type === 'checkbox');
+    // Direct active todos count from checkboxes (excluding global toggle / master control checkboxes)
+    const checkboxes = elements.filter((el) => {
+      if (el.role !== 'checkbox' && el.type !== 'checkbox') return false;
+      const desc = `${el.id} ${el.name || ''} ${el.ariaLabel || ''} ${el.title || ''} ${el.text || ''}`.toLowerCase();
+      if (/toggle-all|mark[\s-_]*all|select[\s-_]*all/i.test(desc)) return false;
+      return true;
+    });
     const activeCount = checkboxes.filter((c) => !c.checked && !c.ariaChecked).length;
     return {
       satisfied: activeCount === expectedCount,

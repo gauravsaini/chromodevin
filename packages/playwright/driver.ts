@@ -46,6 +46,11 @@ export class PlaywrightBrowserEngine {
       locators.push(this.page.locator(`[data-kevin-id="${targetId}"], [data-chromodevin-id="${targetId}"]`));
     }
 
+    // Active state container scoping (e.g. TodoMVC active edit inputs: .todo-list li.editing .edit)
+    if (typeof this.page.locator === 'function') {
+      locators.push(this.page.locator('.todo-list li.editing .edit, li.editing input.edit, li.editing input, .editing .edit, .editing input'));
+    }
+
     // 2. Exact link / href match
     if (targetHref && typeof this.page.locator === 'function') {
       locators.push(this.page.locator(`a[href="${targetHref}"]`));
