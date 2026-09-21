@@ -380,63 +380,9 @@ client.close();
 
 Kevin's core engine (`@kevin/core`) isolates all decision logic into independent, strictly pure functions with explicit input/output contracts. Side-effects and browser APIs are quarantined to the outer boundaries.
 
-> 📐 **Visual Diagram:** View the interactive vector diagram at [`docs/architecture.html`](docs/architecture.html) or [`docs/architecture.svg`](docs/architecture.svg).
-
-### System Topology
-
-```mermaid
-flowchart TD
-    subgraph INGRESS["Agent Ingress Runtimes"]
-        PW["@kevin/playwright<br/>createKevin(page)"]
-        MCP["@kevin/mcp<br/>Claude / Cursor / Stdio"]
-        EXT["@kevin/extension<br/>Voice HUD / Chrome MV3"]
-        DAEMON["@kevin/daemon<br/>WebSocket Daemon"]
-        BOX0["Box 0: CDP / DOM Perception<br/>Extracts A11y Tree & Candidates"]
-    end
-
-    subgraph ORCHESTRATION["Agent Orchestration"]
-        INTENT["User Goal / Utterance"]
-        BOX1["Box 1: Plan Decomposer<br/>decomposeCommand(goal)<br/>Splits into Sub-Goals"]
-        BOX6["Box 6: Action Planner (planActionStep)<br/><b>Pipeline Orchestrator</b>"]
-        MEM[("Context Memory<br/>lastTarget & Turn History")]
-    end
-
-    subgraph PURE["Pure Decision Pipeline (LLD Contracts)"]
-        WMCP{"WebMCP Tool<br/>in window?"}
-        BOX2["Box 2: Entity Resolver<br/>resolveEntityReference(goal, candidates, lastTarget)"]
-        BOX3["Box 3: Candidate Ranker<br/>rankCandidates() / Onyx Heuristic (300+ ➔ Top-15)"]
-        BOX8["Box 8: Decision Head (System 1)<br/>browserDecision() / ONNX SLM Forward Pass"]
-        BOX4["Box 4: Action Validator<br/>validateAction(actionPayload)"]
-        BOX5["Box 5: Risk Classifier Gate<br/>classifyActionRisk(action, targetElement)"]
-    end
-
-    subgraph BOUNDARY["Execution Boundary"]
-        BOX7["Box 7: Browser Engine Boundary<br/>PlaywrightBrowserEngine.perform()<br/>Native Locators + DOM Stabilization Guard"]
-    end
-
-    PW --> INTENT
-    MCP --> INTENT
-    EXT --> INTENT
-    DAEMON --> INTENT
-    PW --> BOX0
-    BOX0 -.->|DOMSnapshot| BOX6
-
-    INTENT --> BOX1
-    BOX1 -->|Sequential Sub-Goals| BOX6
-    MEM -.->|lastTarget| BOX6
-
-    BOX6 --> WMCP
-    WMCP --No--> BOX2
-    BOX2 --> BOX3
-    BOX3 --> BOX8
-    BOX8 --> BOX4
-    BOX4 --> BOX5
-    BOX5 -->|Validated ActionPayload| BOX6
-
-    BOX6 ==>|ActionPayload| BOX7
-    BOX7 -.->|Update State & lastTarget| MEM
-    WMCP --Yes (Direct Call)--> BOX7
-```
+> 📐 **Visual Architectural Diagrams:**
+> * **High-Level Design (HLD):** [`docs/hld-kevin-architecture.html`](docs/hld-kevin-architecture.html) ([SVG](docs/hld-kevin-architecture.svg))
+> * **Low-Level Design (LLD — 8-Box Pure Pipeline):** [`docs/lld-kevin-pipeline.html`](docs/lld-kevin-pipeline.html) ([SVG](docs/lld-kevin-pipeline.svg))
 
 ### LLD Pure Contract Specification
 

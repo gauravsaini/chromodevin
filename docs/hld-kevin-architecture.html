@@ -1,0 +1,443 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Kevin — Autonomous Browser Agent System Architecture (HLD)</title>
+  <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --color-paper:   #2d3142;   /* deep warm charcoal */
+      --color-paper-2: #393e53;   /* secondary container bg */
+      --color-ink:     #f5f5f5;   /* warm off-white */
+      --color-muted:   #bfc0c0;   /* silver muted */
+      --color-soft:    #8e98ac;   /* tertiary slate */
+      --color-rule:    rgba(245,245,245,0.12);
+      --color-accent:  #f08a59;   /* atomic tangerine focal */
+      --color-accent-tint: rgba(240,138,89,0.10);
+      --color-link:    #6a95d8;   /* link blue */
+      --font-sans:     'Geist', system-ui, sans-serif;
+      --font-serif:    'Instrument Serif', serif;
+      --font-mono:     'Geist Mono', ui-monospace, monospace;
+    }
+
+    body {
+      font-family: var(--font-sans);
+      background: var(--color-paper);
+      color: var(--color-ink);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 3rem 2rem;
+    }
+
+    .frame {
+      max-width: 1160px;
+      width: 100%;
+    }
+
+    .header-block {
+      margin-bottom: 2rem;
+      border-bottom: 1px solid var(--color-rule);
+      padding-bottom: 1.25rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-end;
+    }
+
+    .eyebrow {
+      font-family: var(--font-mono);
+      font-size: 0.68rem;
+      font-weight: 500;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: var(--color-accent);
+      margin-bottom: 0.5rem;
+    }
+
+    h1 {
+      font-family: var(--font-serif);
+      font-size: clamp(1.75rem, 2.5vw + 0.5rem, 2.35rem);
+      font-weight: 400;
+      letter-spacing: -0.02em;
+      line-height: 1.15;
+      color: var(--color-ink);
+    }
+
+    .meta-tag {
+      font-family: var(--font-mono);
+      font-size: 0.72rem;
+      color: var(--color-muted);
+      letter-spacing: 0.08em;
+    }
+
+    .diagram-container {
+      width: 100%;
+      background: var(--color-paper);
+      border: 1px solid var(--color-rule);
+      border-radius: 8px;
+      padding: 1rem;
+      margin-bottom: 2.5rem;
+      overflow-x: auto;
+    }
+
+    svg {
+      width: 100%;
+      min-width: 1040px;
+      height: auto;
+      display: block;
+    }
+
+    .cards-grid {
+      display: grid;
+      grid-template-columns: 1.15fr 1fr 0.95fr;
+      gap: 1.25rem;
+      margin-top: 1rem;
+    }
+
+    .card {
+      background: var(--color-paper-2);
+      border: 1px solid var(--color-rule);
+      border-radius: 6px;
+      padding: 1.25rem;
+    }
+
+    .card .eyebrow {
+      color: var(--color-muted);
+      margin-bottom: 0.4rem;
+    }
+
+    .card-header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 0.75rem;
+    }
+
+    .card-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--color-muted);
+    }
+
+    .card-dot.accent { background: var(--color-accent); }
+    .card-dot.link { background: var(--color-link); }
+
+    .card h3 {
+      font-size: 0.95rem;
+      font-weight: 600;
+      color: var(--color-ink);
+    }
+
+    .card p, .card li {
+      font-size: 0.82rem;
+      line-height: 1.5;
+      color: var(--color-muted);
+    }
+
+    .card ul {
+      list-style-type: none;
+      display: flex;
+      flex-direction: column;
+      gap: 0.4rem;
+    }
+
+    .card li strong {
+      color: var(--color-ink);
+      font-weight: 500;
+    }
+
+    footer {
+      margin-top: 2.5rem;
+      padding-top: 1rem;
+      border-top: 1px solid var(--color-rule);
+      font-family: var(--font-mono);
+      font-size: 0.72rem;
+      color: var(--color-soft);
+      display: flex;
+      justify-content: space-between;
+    }
+  </style>
+</head>
+<body>
+  <div class="frame">
+    <div class="header-block">
+      <div>
+        <p class="eyebrow">High-Level Design (HLD) · System Architecture</p>
+        <h1>Kevin — Autonomous Browser Agent Architecture</h1>
+      </div>
+      <div class="meta-tag">
+        WEBGPU HARDWARE ACCELERATED · MANIFEST V3 · PLAYWRIGHT · MCP
+      </div>
+    </div>
+
+    <div class="diagram-container">
+      <svg viewBox="0 0 1080 680" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="hld-kevin-title hld-kevin-desc">
+        <title id="hld-kevin-title">Kevin High-Level System Architecture</title>
+        <desc id="hld-kevin-desc">High-level architecture showing Client Surfaces, Core Perception and WebGPU Decision Engine, and the Target Browser Execution Environment.</desc>
+
+        <defs>
+          <marker id="arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
+            <polygon points="0 0, 8 3, 0 6" fill="#bfc0c0"/>
+          </marker>
+          <marker id="arrow-accent" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
+            <polygon points="0 0, 8 3, 0 6" fill="#f08a59"/>
+          </marker>
+          <marker id="arrow-link" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
+            <polygon points="0 0, 8 3, 0 6" fill="#6a95d8"/>
+          </marker>
+        </defs>
+
+        <!-- Canvas background -->
+        <rect width="1080" height="680" fill="#2d3142"/>
+
+        <!-- ── ZONE 1: Client & Surface Integration ── -->
+        <rect x="40" y="72" width="280" height="480" rx="8"
+              fill="rgba(245,245,245,0.02)" stroke="rgba(245,245,245,0.12)" stroke-width="0.8"/>
+        <rect x="56" y="76" width="144" height="12" rx="2" fill="#2d3142"/>
+        <text x="128" y="85" fill="#bfc0c0" font-size="8" font-family="'Geist Mono', monospace"
+              text-anchor="middle" letter-spacing="0.14em">CLIENT SURFACES</text>
+
+        <!-- ── ZONE 2: Perception & Intelligence Core ── -->
+        <rect x="360" y="72" width="360" height="480" rx="8"
+              fill="rgba(245,245,245,0.02)" stroke="rgba(245,245,245,0.12)" stroke-width="0.8"/>
+        <rect x="376" y="76" width="192" height="12" rx="2" fill="#2d3142"/>
+        <text x="472" y="85" fill="#bfc0c0" font-size="8" font-family="'Geist Mono', monospace"
+              text-anchor="middle" letter-spacing="0.14em">PERCEPTION & LOCAL SLM</text>
+
+        <!-- ── ZONE 3: Execution & Environment ── -->
+        <rect x="760" y="72" width="280" height="480" rx="8"
+              fill="rgba(245,245,245,0.02)" stroke="rgba(245,245,245,0.12)" stroke-width="0.8"/>
+        <rect x="776" y="76" width="168" height="12" rx="2" fill="#2d3142"/>
+        <text x="860" y="85" fill="#bfc0c0" font-size="8" font-family="'Geist Mono', monospace"
+              text-anchor="middle" letter-spacing="0.14em">BROWSER EXECUTION</text>
+
+        <!-- ── CONNECTORS (Drawn before nodes to ensure clean z-order) ── -->
+
+        <!-- 1. Playwright -> WebGPU Runner (Solid horizontal) -->
+        <line x1="300" y1="148" x2="384" y2="148" stroke="#f08a59" stroke-width="1.2" marker-end="url(#arrow-accent)"/>
+        <rect x="320" y="132" width="48" height="12" rx="2" fill="#2d3142"/>
+        <text x="344" y="141" fill="#f08a59" font-size="8" font-family="'Geist Mono', monospace"
+              text-anchor="middle" letter-spacing="0.06em">ACT/PLAN</text>
+
+        <!-- 2. MCP -> Onyx Ranker (Orthogonal elbow r=8) -->
+        <path d="M 300,244 H 336 Q 344,244 344,248 V 252 Q 344,256 352,256 H 384"
+              fill="none" stroke="#bfc0c0" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <rect x="312" y="228" width="56" height="12" rx="2" fill="#2d3142"/>
+        <text x="340" y="237" fill="#bfc0c0" font-size="8" font-family="'Geist Mono', monospace"
+              text-anchor="middle" letter-spacing="0.06em">TOOL/CALL</text>
+
+        <!-- 3. Daemon -> Action Cache (Solid horizontal) -->
+        <line x1="300" y1="344" x2="384" y2="344" stroke="#bfc0c0" stroke-width="1" marker-end="url(#arrow)"/>
+        <rect x="320" y="328" width="48" height="12" rx="2" fill="#2d3142"/>
+        <text x="344" y="337" fill="#8e98ac" font-size="8" font-family="'Geist Mono', monospace"
+              text-anchor="middle" letter-spacing="0.06em">WS/DISPATCH</text>
+
+        <!-- 4. Onyx Ranker -> WebGPU Runner (Vertical bottom to top) -->
+        <line x1="540" y1="224" x2="540" y2="196" stroke="#bfc0c0" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <rect x="512" y="202" width="56" height="12" rx="2" fill="#2d3142"/>
+        <text x="540" y="211" fill="#bfc0c0" font-size="8" font-family="'Geist Mono', monospace"
+              text-anchor="middle" letter-spacing="0.06em">TOP-K NODES</text>
+
+        <!-- 5. SLM Weights -> WebGPU Runner (Dashed vertical upward) -->
+        <path d="M 660,416 V 360 Q 660,352 668,352 H 680 Q 688,352 688,344 V 200 Q 688,192 680,192 H 672"
+              fill="none" stroke="#8e98ac" stroke-width="1" stroke-dasharray="4,3" marker-end="url(#arrow)"/>
+        <rect x="644" y="376" width="56" height="12" rx="2" fill="#2d3142"/>
+        <text x="672" y="385" fill="#8e98ac" font-size="8" font-family="'Geist Mono', monospace"
+              text-anchor="middle" letter-spacing="0.06em">WEIGHTS</text>
+
+        <!-- 6. WebGPU Runner -> Risk Gate (Focal accent horizontal) -->
+        <line x1="696" y1="152" x2="780" y2="152" stroke="#f08a59" stroke-width="1.2" marker-end="url(#arrow-accent)"/>
+        <rect x="714" y="136" width="52" height="12" rx="2" fill="#2d3142"/>
+        <text x="740" y="145" fill="#f08a59" font-size="8" font-family="'Geist Mono', monospace"
+              text-anchor="middle" letter-spacing="0.06em">ACTION-PROP</text>
+
+        <!-- 7. Risk Gate -> CDP Driver (Vertical downward) -->
+        <line x1="900" y1="192" x2="900" y2="252" stroke="#bfc0c0" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <rect x="864" y="214" width="72" height="12" rx="2" fill="#2d3142"/>
+        <text x="900" y="223" fill="#bfc0c0" font-size="8" font-family="'Geist Mono', monospace"
+              text-anchor="middle" letter-spacing="0.06em">VALIDATED STEP</text>
+
+        <!-- 8. CDP Driver -> Target Context (Vertical downward) -->
+        <line x1="900" y1="316" x2="900" y2="364" stroke="#6a95d8" stroke-width="1.2" marker-end="url(#arrow-link)"/>
+        <rect x="868" y="332" width="64" height="12" rx="2" fill="#2d3142"/>
+        <text x="900" y="341" fill="#6a95d8" font-size="8" font-family="'Geist Mono', monospace"
+              text-anchor="middle" letter-spacing="0.06em">CDP DISPATCH</text>
+
+        <!-- 9. Target Context -> Action Cache / Perception (Orthogonal feedback loop) -->
+        <path d="M 780,420 H 744 Q 736,420 736,412 V 264 Q 736,256 728,256 H 696"
+              fill="none" stroke="#8e98ac" stroke-width="1" stroke-dasharray="4,4" marker-end="url(#arrow)"/>
+        <rect x="712" y="336" width="56" height="12" rx="2" fill="#2d3142"/>
+        <text x="740" y="345" fill="#8e98ac" font-size="8" font-family="'Geist Mono', monospace"
+              text-anchor="middle" letter-spacing="0.06em">DOM SNAPSHOT</text>
+
+        <!-- ── ZONE 1 NODES (Client Surfaces) ── -->
+        <!-- Node 1: Playwright API -->
+        <rect x="60" y="116" width="240" height="64" rx="6" fill="#2d3142"/>
+        <rect x="60" y="116" width="240" height="64" rx="6" fill="#393e53" stroke="#bfc0c0" stroke-width="1"/>
+        <rect x="68" y="122" width="36" height="12" rx="2" fill="transparent" stroke="rgba(191,192,192,0.4)" stroke-width="0.8"/>
+        <text x="86" y="131" fill="#bfc0c0" font-size="7" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">NODE</text>
+        <text x="180" y="146" fill="#f5f5f5" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Playwright Agent API</text>
+        <text x="180" y="162" fill="#8e98ac" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">@kevin/playwright · 3-verb API</text>
+
+        <!-- Node 2: MCP Server -->
+        <rect x="60" y="212" width="240" height="64" rx="6" fill="#2d3142"/>
+        <rect x="60" y="212" width="240" height="64" rx="6" fill="#393e53" stroke="#bfc0c0" stroke-width="1"/>
+        <rect x="68" y="218" width="32" height="12" rx="2" fill="transparent" stroke="rgba(191,192,192,0.4)" stroke-width="0.8"/>
+        <text x="84" y="227" fill="#bfc0c0" font-size="7" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">MCP</text>
+        <text x="180" y="242" fill="#f5f5f5" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Kevin MCP Server</text>
+        <text x="180" y="258" fill="#8e98ac" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">JSON-RPC 2.0 stdio · tools/call</text>
+
+        <!-- Node 3: Daemon -->
+        <rect x="60" y="308" width="240" height="64" rx="6" fill="#2d3142"/>
+        <rect x="60" y="308" width="240" height="64" rx="6" fill="#393e53" stroke="#bfc0c0" stroke-width="1"/>
+        <rect x="68" y="314" width="28" height="12" rx="2" fill="transparent" stroke="rgba(191,192,192,0.4)" stroke-width="0.8"/>
+        <text x="82" y="323" fill="#bfc0c0" font-size="7" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">WS</text>
+        <text x="180" y="338" fill="#f5f5f5" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Background Daemon</text>
+        <text x="180" y="354" fill="#8e98ac" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">127.0.0.1:8765 · Multi-tab bridge</text>
+
+        <!-- Node 4: Chrome MV3 -->
+        <rect x="60" y="404" width="240" height="64" rx="6" fill="#2d3142"/>
+        <rect x="60" y="404" width="240" height="64" rx="6" fill="#393e53" stroke="#bfc0c0" stroke-width="1"/>
+        <rect x="68" y="410" width="28" height="12" rx="2" fill="transparent" stroke="rgba(191,192,192,0.4)" stroke-width="0.8"/>
+        <text x="82" y="419" fill="#bfc0c0" font-size="7" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">MV3</text>
+        <text x="180" y="434" fill="#f5f5f5" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Chrome Extension HUD</text>
+        <text x="180" y="450" fill="#8e98ac" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">Push-to-talk voice & DOM annotator</text>
+
+        <!-- ── ZONE 2 NODES (Perception & Intelligence Core) ── -->
+        <!-- Node 5: WebGPU Decision Runner (FOCAL ACCENT) -->
+        <rect x="384" y="116" width="312" height="76" rx="6" fill="#2d3142"/>
+        <rect x="384" y="116" width="312" height="76" rx="6" fill="rgba(240,138,89,0.10)" stroke="#f08a59" stroke-width="1.2"/>
+        <rect x="392" y="122" width="36" height="12" rx="2" fill="transparent" stroke="rgba(240,138,89,0.5)" stroke-width="0.8"/>
+        <text x="410" y="131" fill="#f08a59" font-size="7" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">WGSL</text>
+        <text x="540" y="148" fill="#f5f5f5" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">In-Page WebGPU Decision Runner</text>
+        <text x="540" y="166" fill="#f08a59" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">navigator.gpu · VRAM Pipeline Cached &lt;4ms</text>
+        <text x="540" y="180" fill="#8e98ac" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle">Parallel Softmax Argmax Reduction</text>
+
+        <!-- Node 6: Onyx Ranker -->
+        <rect x="384" y="224" width="312" height="64" rx="6" fill="#2d3142"/>
+        <rect x="384" y="224" width="312" height="64" rx="6" fill="#393e53" stroke="#bfc0c0" stroke-width="1"/>
+        <rect x="392" y="230" width="36" height="12" rx="2" fill="transparent" stroke="rgba(191,192,192,0.4)" stroke-width="0.8"/>
+        <text x="410" y="239" fill="#bfc0c0" font-size="7" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">ONYX</text>
+        <text x="540" y="254" fill="#f5f5f5" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Candidate Element Ranker</text>
+        <text x="540" y="270" fill="#8e98ac" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">Microsecond intent filtering: 500+ -&gt; Top-15</text>
+
+        <!-- Node 7: Action Cache & Settlement -->
+        <rect x="384" y="320" width="312" height="64" rx="6" fill="#2d3142"/>
+        <rect x="384" y="320" width="312" height="64" rx="6" fill="#393e53" stroke="#bfc0c0" stroke-width="1"/>
+        <rect x="392" y="326" width="40" height="12" rx="2" fill="transparent" stroke="rgba(191,192,192,0.4)" stroke-width="0.8"/>
+        <text x="412" y="335" fill="#bfc0c0" font-size="7" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">CACHE</text>
+        <text x="540" y="350" fill="#f5f5f5" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Self-Healing Action Cache</text>
+        <text x="540" y="366" fill="#8e98ac" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">&lt;1ms DOM hash hit · waitForDomSettle guard</text>
+
+        <!-- Node 8: SLM Weights -->
+        <rect x="384" y="416" width="312" height="64" rx="6" fill="#2d3142"/>
+        <rect x="384" y="416" width="312" height="64" rx="6" fill="#393e53" stroke="rgba(191,192,192,0.3)" stroke-width="0.8" stroke-dasharray="4,3"/>
+        <rect x="392" y="422" width="40" height="12" rx="2" fill="transparent" stroke="rgba(191,192,192,0.4)" stroke-width="0.8"/>
+        <text x="412" y="431" fill="#bfc0c0" font-size="7" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">MODEL</text>
+        <text x="540" y="446" fill="#f5f5f5" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">System 1 Quantized SLMs</text>
+        <text x="540" y="462" fill="#8e98ac" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">receptron/laya-onnx · LFM2.5 · kev-0.6b</text>
+
+        <!-- ── ZONE 3 NODES (Execution & Environment) ── -->
+        <!-- Node 9: Risk Gate -->
+        <rect x="780" y="128" width="240" height="64" rx="6" fill="#2d3142"/>
+        <rect x="780" y="128" width="240" height="64" rx="6" fill="#393e53" stroke="#bfc0c0" stroke-width="1"/>
+        <rect x="788" y="134" width="32" height="12" rx="2" fill="transparent" stroke="rgba(191,192,192,0.4)" stroke-width="0.8"/>
+        <text x="804" y="143" fill="#bfc0c0" font-size="7" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">SAFE</text>
+        <text x="900" y="158" fill="#f5f5f5" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Deterministic Risk Gate</text>
+        <text x="900" y="174" fill="#8e98ac" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">Pure classification: Low/Med/High</text>
+
+        <!-- Node 10: CDP Driver -->
+        <rect x="780" y="252" width="240" height="64" rx="6" fill="#2d3142"/>
+        <rect x="780" y="252" width="240" height="64" rx="6" fill="#393e53" stroke="#bfc0c0" stroke-width="1"/>
+        <rect x="788" y="258" width="28" height="12" rx="2" fill="transparent" stroke="rgba(191,192,192,0.4)" stroke-width="0.8"/>
+        <text x="802" y="267" fill="#bfc0c0" font-size="7" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">CDP</text>
+        <text x="900" y="282" fill="#f5f5f5" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Playwright CDP Driver</text>
+        <text x="900" y="298" fill="#8e98ac" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">Native locator & mouse dispatch</text>
+
+        <!-- Node 11: Target Context -->
+        <rect x="780" y="364" width="240" height="84" rx="6" fill="#2d3142"/>
+        <rect x="780" y="364" width="240" height="84" rx="6" fill="#393e53" stroke="#6a95d8" stroke-width="1"/>
+        <rect x="788" y="370" width="28" height="12" rx="2" fill="transparent" stroke="rgba(106,149,216,0.5)" stroke-width="0.8"/>
+        <text x="802" y="379" fill="#6a95d8" font-size="7" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">ENV</text>
+        <text x="900" y="396" fill="#f5f5f5" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Target Chromium Browser</text>
+        <text x="900" y="414" fill="#6a95d8" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">Headless Chromium V8 / navigator.gpu</text>
+        <text x="900" y="430" fill="#8e98ac" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle">Live DOM · AX Tree · 127.0.0.1 Secure Origin</text>
+
+        <!-- ── LEGEND STRIP (Mandatory horizontal bottom bar) ── -->
+        <line x1="40" y1="588" x2="1040" y2="588" stroke="rgba(245,245,245,0.12)" stroke-width="0.8"/>
+        <text x="40" y="608" fill="#8e98ac" font-size="8" font-family="'Geist Mono', monospace" letter-spacing="0.14em">LEGEND</text>
+
+        <!-- Item 1: WebGPU Focal -->
+        <rect x="120" y="600" width="12" height="12" rx="2" fill="rgba(240,138,89,0.10)" stroke="#f08a59" stroke-width="1"/>
+        <text x="140" y="610" fill="#f5f5f5" font-size="9" font-family="'Geist', sans-serif">WebGPU WGSL Tensor Head (Focal)</text>
+
+        <!-- Item 2: Core Engine Box -->
+        <rect x="380" y="600" width="12" height="12" rx="2" fill="#393e53" stroke="#bfc0c0" stroke-width="1"/>
+        <text x="400" y="610" fill="#f5f5f5" font-size="9" font-family="'Geist', sans-serif">System 1 Core Module</text>
+
+        <!-- Item 3: External Driver -->
+        <rect x="580" y="600" width="12" height="12" rx="2" fill="#393e53" stroke="#6a95d8" stroke-width="1"/>
+        <text x="600" y="610" fill="#f5f5f5" font-size="9" font-family="'Geist', sans-serif">Browser / CDP Environment</text>
+
+        <!-- Item 4: Critical Flow -->
+        <line x1="780" y1="606" x2="808" y2="606" stroke="#f08a59" stroke-width="1.2" marker-end="url(#arrow-accent)"/>
+        <text x="816" y="610" fill="#f5f5f5" font-size="9" font-family="'Geist', sans-serif">Primary Decision Path</text>
+
+        <!-- Item 5: Feedback / Snapshot -->
+        <line x1="940" y1="606" x2="968" y2="606" stroke="#8e98ac" stroke-width="1" stroke-dasharray="4,4" marker-end="url(#arrow)"/>
+        <text x="976" y="610" fill="#f5f5f5" font-size="9" font-family="'Geist', sans-serif">State Feedback</text>
+      </svg>
+    </div>
+
+    <div class="cards-grid">
+      <div class="card">
+        <p class="eyebrow">HARDWARE INFERENCE</p>
+        <div class="card-header">
+          <span class="card-dot accent"></span>
+          <h3>In-Page WebGPU WGSL Engine</h3>
+        </div>
+        <ul>
+          <li><strong>Direct GPU Binding:</strong> Evaluates tensor scoring on <code>navigator.gpu</code> using compiled WGSL shaders.</li>
+          <li><strong>Hot VRAM Caching:</strong> Pipeline cached on <code>window.__kevin_webgpu</code> for sub-4ms subsequent forward passes.</li>
+          <li><strong>Zero Cloud Tokens:</strong> Eliminates roundtrips and API costs with 100% on-device discriminative SLM inference.</li>
+        </ul>
+      </div>
+
+      <div class="card">
+        <p class="eyebrow">HIGH-THROUGHPUT PERCEPTION</p>
+        <div class="card-header">
+          <span class="card-dot"></span>
+          <h3>Onyx Candidate Ranker & Cache</h3>
+        </div>
+        <ul>
+          <li><strong>Microsecond Gating:</strong> Parallel dot-product candidate ranking prunes 500+ raw DOM nodes to Top-15.</li>
+          <li><strong>Self-Healing Cache:</strong> SHA-256 DOM fingerprint lookup delivers &lt;1ms instant replay execution.</li>
+          <li><strong>DOM Mutation Stability:</strong> <code>waitForDomSettle</code> ensures zero race conditions on dynamic routes.</li>
+        </ul>
+      </div>
+
+      <div class="card">
+        <p class="eyebrow">SURFACES & SAFETY</p>
+        <div class="card-header">
+          <span class="card-dot link"></span>
+          <h3>Universal Runtime & Risk Gate</h3>
+        </div>
+        <ul>
+          <li><strong>Multi-Surface Architecture:</strong> Native Playwright agent, JSON-RPC MCP server, WebSocket daemon, MV3 HUD.</li>
+          <li><strong>Pure Security Risk Gate:</strong> Deterministic Low/Medium/High classification intercepting sensitive actions.</li>
+          <li><strong>100% Data Privacy:</strong> Zero DOM HTML, credentials, or cookies ever exfiltrate the local machine.</li>
+        </ul>
+      </div>
+    </div>
+
+    <footer>
+      <span>KEVIN HIGH-LEVEL DESIGN (HLD) · ARTIFACT v2.4</span>
+      <span>DIAGRAM DESIGN · EDITORIAL DARK THEME</span>
+    </footer>
+  </div>
+</body>
+</html>
