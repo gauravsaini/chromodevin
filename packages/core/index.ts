@@ -10,6 +10,32 @@ export { ContextMemory, resolveEntityReference } from './agent/context-memory.js
 export { decomposeCommand } from './agent/plan-decomposer.js';
 export { CommandStream } from './agent/command-stream.js';
 export { VoiceStateMachine, InteractionState, VoiceAgentState } from './agent/voice-state-machine.js';
+export {
+  cleanTranscript,
+  extractTextCandidates,
+  normalizeSpokenUrl,
+  extractUrlCandidates,
+  toHttpUrl,
+  parseCandidatePick
+} from './agent/voice-spans.js';
+export {
+  evaluateVoicePolicy,
+  describeAction,
+  DEFAULT_THRESHOLDS,
+  SILENCE_COMPLETE_MS,
+  PAYLOAD_SILENCE_MS,
+  type VoiceThresholds,
+  type VoicePolicyInput,
+  type VoicePolicyResult,
+  type DisambiguationCandidate
+} from './agent/voice-policy.js';
+export {
+  voiceDecision,
+  scoreIntents,
+  scoreSites,
+  type VoiceDecisionInput,
+  type VoiceDecisionResult
+} from './ai/voice-decision.js';
 
 // Perception
 export { DecisionEngine, rankCandidates, defaultDecisionEngine } from './perception/decision-engine.js';

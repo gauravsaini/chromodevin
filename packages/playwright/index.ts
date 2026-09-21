@@ -28,6 +28,9 @@ import {
 import { extractSchema } from '../core/actions/schema-extractor.js';
 import type { ActionPayload, DOMSnapshot, VerificationResult } from '../core/types.js';
 
+import { VoiceBrowserController, type VoiceControllerOptions } from './voice-controller.js';
+import { installOverlay } from './overlay.js';
+
 export {
   PlaywrightBrowserEngine,
   extractPlaywrightSnapshot,
@@ -40,7 +43,10 @@ export {
   computeDomFingerprint,
   computeCacheKey,
   extractSchema,
-  verifyCondition
+  verifyCondition,
+  VoiceBrowserController,
+  installOverlay,
+  type VoiceControllerOptions
 };
 
 export interface KevinPlaywrightOptions {

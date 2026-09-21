@@ -6,8 +6,12 @@ dist/
 .env
 .agents/
 skills-lock.json
-!README.md
 *.md
+!README.md
+!IDEA.md
+!PLAN.md
+!AGENTS.md
+!GEMINI.md
 *.onnx
 *.onnx_data
 models/**/tokenizer*

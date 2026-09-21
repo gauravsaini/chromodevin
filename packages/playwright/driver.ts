@@ -43,7 +43,7 @@ export class PlaywrightBrowserEngine {
 
     // 1. Ephemeral or persistent kevin ID attribute
     if (targetId && typeof this.page.locator === 'function') {
-      locators.push(this.page.locator(`[data-kevin-id="${targetId}"], [data-chromodevin-id="${targetId}"]`));
+      locators.push(this.page.locator(`[data-kevin-id="${targetId}"], [data-chromodevin-id="${targetId}"], [data-vb-id="${targetId}"]`));
     }
 
     // Active state container scoping (e.g. TodoMVC active edit inputs: .todo-list li.editing .edit)
@@ -104,7 +104,8 @@ export class PlaywrightBrowserEngine {
 
     try {
       switch (action) {
-        case 'navigate': {
+        case 'navigate':
+        case 'navigate_url' as any: {
           if (!payload.url) {
             return { success: false, error: 'Navigate action requires a valid URL' };
           }
@@ -114,7 +115,8 @@ export class PlaywrightBrowserEngine {
           return { success: true, message: `Navigated to ${payload.url}` };
         }
 
-        case 'click': {
+        case 'click':
+        case 'click_element' as any: {
           const locators = this.resolveCandidateLocators(payload);
           if (locators.length === 0) {
             return { success: false, error: `Could not resolve locator for click target "${payload.targetId || payload.targetText}"` };
@@ -219,7 +221,8 @@ export class PlaywrightBrowserEngine {
           return { success: true, message: `Hovered over element ${targetDesc}` };
         }
 
-        case 'type': {
+        case 'type':
+        case 'type_into_field' as any: {
           const locators = this.resolveCandidateLocators(payload);
           if (locators.length === 0) {
             return { success: false, error: `Could not resolve locator for type target "${payload.targetId}"` };
@@ -254,7 +257,8 @@ export class PlaywrightBrowserEngine {
           return { success: true, message: `Typed "${text}" into "${payload.targetId}"${payload.pressEnter ? ' and submitted' : ''}` };
         }
 
-        case 'press_key': {
+        case 'press_key':
+        case 'press_enter' as any: {
           const key = payload.key || payload.text || 'Enter';
           const locators = this.resolveCandidateLocators(payload);
           let pressed = false;
@@ -294,29 +298,111 @@ export class PlaywrightBrowserEngine {
           return { success: true, message: `Pressed key "${key}"` };
         }
 
-        case 'scroll': {
+        case 'scroll':
+        case 'scroll_down' as any:
+        case 'scroll_up' as any: {
           const delta = payload.amount || 500;
-          const direction = payload.direction === 'up' ? -delta : delta;
+          const isUp = payload.direction === 'up' || (payload.action as any) === 'scroll_up';
+          const direction = isUp ? -delta : delta;
           if (typeof this.page.evaluate === 'function') {
             await this.page.evaluate((y: number) => window.scrollBy({ top: y, behavior: 'smooth' }), direction);
           } else if (this.page.mouse && typeof this.page.mouse.wheel === 'function') {
             await this.page.mouse.wheel(0, direction);
           }
-          return { success: true, message: `Scrolled ${payload.direction || 'down'} by ${delta}px` };
+          return { success: true, message: `Scrolled ${isUp ? 'up' : 'down'} by ${delta}px` };
         }
 
-        case 'back': {
+        case 'back':
+        case 'go_back' as any: {
           if (typeof this.page.goBack === 'function') {
             await this.page.goBack({ timeout: this.defaultTimeout }).catch(() => {});
           }
           return { success: true, message: 'Navigated back in history' };
         }
 
-        case 'forward': {
+        case 'forward':
+        case 'go_forward': {
           if (typeof this.page.goForward === 'function') {
             await this.page.goForward({ timeout: this.defaultTimeout }).catch(() => {});
           }
           return { success: true, message: 'Navigated forward in history' };
+        }
+
+        case 'reload': {
+          if (typeof this.page.reload === 'function') {
+            await this.page.reload({ timeout: this.defaultTimeout }).catch(() => {});
+          }
+          return { success: true, message: 'Reloaded current page' };
+        }
+
+        case 'select_option': {
+          const locators = this.resolveCandidateLocators(payload);
+          const wantedText = payload.text || payload.key || '';
+          let picked = false;
+
+          for (const locator of locators) {
+            try {
+              const el = typeof locator.first === 'function' ? locator.first() : locator;
+              if (typeof el.selectOption === 'function') {
+                await el.selectOption({ label: wantedText }).catch(async () => {
+                  await el.selectOption({ value: wantedText });
+                });
+                picked = true;
+                break;
+              }
+            } catch {
+              // try next
+            }
+          }
+          return { success: picked, message: picked ? `Selected option "${wantedText}"` : `Could not select option "${wantedText}"` };
+        }
+
+        case 'open_new_tab': {
+          const context = this.page.context ? this.page.context() : null;
+          if (context && typeof context.newPage === 'function') {
+            const newPage = await context.newPage();
+            this.page = newPage;
+            return { success: true, message: 'Opened new tab' };
+          }
+          return { success: false, error: 'Cannot open new tab: browser context unavailable' };
+        }
+
+        case 'close_tab': {
+          if (typeof this.page.close === 'function') {
+            const context = this.page.context ? this.page.context() : null;
+            await this.page.close().catch(() => {});
+            if (context && typeof context.pages === 'function') {
+              const remaining = context.pages();
+              if (remaining.length > 0) {
+                this.page = remaining[remaining.length - 1];
+              }
+            }
+            return { success: true, message: 'Closed active tab' };
+          }
+          return { success: false, error: 'Cannot close tab: page.close unavailable' };
+        }
+
+        case 'switch_tab': {
+          const context = this.page.context ? this.page.context() : null;
+          if (context && typeof context.pages === 'function') {
+            const pages = context.pages();
+            if (pages.length <= 1) {
+              return { success: false, message: 'Only one tab open' };
+            }
+            const currentIdx = pages.indexOf(this.page);
+            let nextIdx = (currentIdx + 1) % pages.length;
+            if (payload.direction === 'up' || payload.direction === 'previous' as any) {
+              nextIdx = (currentIdx - 1 + pages.length) % pages.length;
+            } else if (payload.direction === 'first' as any) {
+              nextIdx = 0;
+            }
+            this.page = pages[nextIdx];
+            if (typeof this.page.bringToFront === 'function') {
+              await this.page.bringToFront().catch(() => {});
+            }
+            return { success: true, message: `Switched to tab index ${nextIdx}` };
+          }
+          return { success: false, error: 'Cannot switch tab: browser context pages unavailable' };
         }
 
         case 'wait': {
@@ -342,6 +428,71 @@ export class PlaywrightBrowserEngine {
       }
     } catch (err: any) {
       return { success: false, error: err?.message || String(err) };
+    }
+  }
+
+  /**
+   * Safely shows floating toast overlay in page.
+   */
+  async toast(message: string, ms = 1800): Promise<void> {
+    if (typeof this.page?.evaluate === 'function') {
+      await this.page.evaluate(
+        ([msg, dur]: [string, number]) => {
+          const win = window as any;
+          if (win.__kevinOverlay && typeof win.__kevinOverlay.toast === 'function') {
+            win.__kevinOverlay.toast(msg, dur);
+          }
+        },
+        [message, ms]
+      ).catch(() => {});
+    }
+  }
+
+  /**
+   * Highlights element in page.
+   */
+  async highlight(targetId: string, ms = 600): Promise<void> {
+    if (typeof this.page?.evaluate === 'function') {
+      await this.page.evaluate(
+        ([id, dur]: [string, number]) => {
+          const win = window as any;
+          if (win.__kevinOverlay && typeof win.__kevinOverlay.highlight === 'function') {
+            win.__kevinOverlay.highlight(id, dur);
+          }
+        },
+        [targetId, ms]
+      ).catch(() => {});
+    }
+  }
+
+  /**
+   * Shows numbered candidate overlays in page.
+   */
+  async showCandidates(list: Array<{ id: string; n: number; label?: string }>, ms = 8000): Promise<void> {
+    if (typeof this.page?.evaluate === 'function') {
+      await this.page.evaluate(
+        ([items, dur]: [any[], number]) => {
+          const win = window as any;
+          if (win.__kevinOverlay && typeof win.__kevinOverlay.candidates === 'function') {
+            win.__kevinOverlay.candidates(items, dur);
+          }
+        },
+        [list, ms]
+      ).catch(() => {});
+    }
+  }
+
+  /**
+   * Clears numbered candidate overlays.
+   */
+  async clearCandidates(): Promise<void> {
+    if (typeof this.page?.evaluate === 'function') {
+      await this.page.evaluate(() => {
+        const win = window as any;
+        if (win.__kevinOverlay && typeof win.__kevinOverlay.clearCandidates === 'function') {
+          win.__kevinOverlay.clearCandidates();
+        }
+      }).catch(() => {});
     }
   }
 }

@@ -50,7 +50,20 @@ export type ActionType =
   | 'extract'
   | 'wait'
   | 'done'
-  | 'webmcp';
+  | 'webmcp'
+  | 'reload'
+  | 'select_option'
+  | 'open_new_tab'
+  | 'close_tab'
+  | 'switch_tab'
+  | 'click_element'
+  | 'type_into_field'
+  | 'press_enter'
+  | 'scroll_down'
+  | 'scroll_up'
+  | 'go_back'
+  | 'go_forward'
+  | 'navigate_url';
 
 export interface ActionPayload {
   action: ActionType;
