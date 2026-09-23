@@ -336,12 +336,13 @@ Connect Kevin directly to **Claude Desktop**, **Cursor**, or **Antigravity** as 
 | `kevin_observe` | Returns interactive candidate snapshot and accessibility nodes | `url` (string, optional) |
 | `kevin_plan` | Computes next action payload without side effects | `goal` (string, required), `url` (string, optional) |
 | `kevin_navigate` | Direct page navigation | `url` (string, required) |
+| `kevin_infer` | Runs pipeline inference using on-device or daemon decision models | `task` (string, required), `input` (string\|string[], required), `labels` (string[], optional), `model` (string, optional), `device` (string, optional), `dtype` (string, optional) |
 
 ---
 
 ### 3. High-Throughput Automation Daemon (`@kevin/daemon`)
 
-Run a persistent, multi-tab WebSocket daemon for background web agents:
+Run a persistent, multi-tab WebSocket daemon for background web agents and on-device model inference:
 
 ```javascript
 import { KevinDaemon, KevinDaemonClient } from 'kevin/daemon';
@@ -397,7 +398,9 @@ Every box in the core engine is an independent pure unit verified by `tests/pure
 | **Box 5** | **Risk Classifier** | `(actionPayload, candidateElement)` | `{ risk: 'low'\|'medium'\|'high', requiresConfirmation }` | [`packages/core/security/risk-classifier.ts`](packages/core/security/risk-classifier.ts) |
 | **Box 6** | **Action Planner** | `{ goal, snapshot, decisionEngine, context }` | `ValidatedActionPayload` with risk metadata | [`packages/core/agent/agent-runtime.ts`](packages/core/agent/agent-runtime.ts) |
 | **Box 7** | **Browser Engine** | `validatedPayload: ActionPayload` | `{ success: boolean, message?, error? }` | [`packages/core/actions/browser-engine.ts`](packages/core/actions/browser-engine.ts) |
-| **Box 8** | **Decision Head** | `{ state: DOMSnapshot, questions? }` | `{ action, confidence, answers }` | [`packages/core/ai/decision-model.ts`](packages/core/ai/decision-model.ts) |
+| **Box 8** | **Decision Fusion** | `(state, candidates, modelOutput?)` | `{ action, confidence, answers, telemetry }` | [`packages/core/ai/decision-model.ts`](packages/core/ai/decision-model.ts) |
+| **Inference** | **Inference Service** | `(task, input, labels?, model?)` | `{ success, task, output, model, device, dtype }` | [`packages/daemon/infer.ts`](packages/daemon/infer.ts) |
+| **Verify** | **Verify & Retry Loop** | `(goal, condition?, requireVerify, maxAttempts)` | `PlanActVerifyResult { success, verified, attempts }` | [`packages/core/agent/agent-runtime.ts`](packages/core/agent/agent-runtime.ts) |
 
 ---
 

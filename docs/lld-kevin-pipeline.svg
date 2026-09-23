@@ -153,18 +153,18 @@
   <rect x="580" y="396" width="152" height="16" rx="2" fill="#2d3142" stroke="rgba(245,245,245,0.08)" stroke-width="0.8"/>
   <text x="656" y="407" fill="#6a95d8" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle">OUT: { valid, action, err }</text>
 
-  <!-- Box 8: WebGPU Decision Model (FOCAL ACCENT) -->
+  <!-- Box 8: Decision Fusion (FOCAL ACCENT) -->
   <rect x="792" y="324" width="320" height="116" rx="6" fill="#2d3142"/>
   <rect x="792" y="324" width="320" height="116" rx="6" fill="rgba(240,138,89,0.10)" stroke="#f08a59" stroke-width="1.2"/>
-  <rect x="800" y="330" width="104" height="12" rx="2" fill="transparent" stroke="rgba(240,138,89,0.5)" stroke-width="0.8"/>
-  <text x="852" y="339" fill="#f08a59" font-size="7" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">BOX 8 · WEBGPU HEAD</text>
-  <text x="952" y="356" fill="#f5f5f5" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">WebGPU Decision Model</text>
-  <text x="952" y="372" fill="#f08a59" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">WGSL Compute Tensor Pass &lt;4ms</text>
-  <text x="952" y="386" fill="#8e98ac" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle">Parallel Softmax Argmax on navigator.gpu</text>
+  <rect x="800" y="330" width="120" height="12" rx="2" fill="transparent" stroke="rgba(240,138,89,0.5)" stroke-width="0.8"/>
+  <text x="860" y="339" fill="#f08a59" font-size="7" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">BOX 8 · DECISION FUSION</text>
+  <text x="952" y="356" fill="#f5f5f5" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">browserDecision (Decision Fusion)</text>
+  <text x="952" y="372" fill="#f08a59" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">Heuristics + Model Weight Fusion &lt;4ms</text>
+  <text x="952" y="386" fill="#8e98ac" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle">Classification · Generation · Embeddings</text>
   <rect x="800" y="398" width="152" height="16" rx="2" fill="#2d3142" stroke="rgba(240,138,89,0.25)" stroke-width="0.8"/>
-  <text x="876" y="409" fill="#f08a59" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle">IN: (state, candidates, m)</text>
+  <text x="876" y="409" fill="#f08a59" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle">IN: (state, cands, modelOutput?)</text>
   <rect x="960" y="398" width="144" height="16" rx="2" fill="#2d3142" stroke="rgba(240,138,89,0.25)" stroke-width="0.8"/>
-  <text x="1032" y="409" fill="#f08a59" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle">OUT: { action, conf }</text>
+  <text x="1032" y="409" fill="#f08a59" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle">OUT: { action, conf, answers, tel }</text>
 
   <!-- ── STAGE 3 NODES ── -->
   <!-- Box 6: Action Planner -->
@@ -172,12 +172,12 @@
   <rect x="48" y="544" width="480" height="108" rx="6" fill="#393e53" stroke="#bfc0c0" stroke-width="1"/>
   <rect x="56" y="550" width="124" height="12" rx="2" fill="transparent" stroke="rgba(191,192,192,0.4)" stroke-width="0.8"/>
   <text x="118" y="559" fill="#bfc0c0" font-size="7" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">BOX 6 · COMPOSER PIPELINE</text>
-  <text x="288" y="574" fill="#f5f5f5" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">planActionStep (Agent Runtime Orchestrator)</text>
-  <text x="288" y="590" fill="#8e98ac" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">Composes Boxes 2 -&gt; 3 -&gt; 8 -&gt; 4 -&gt; 5 into a single pure turn</text>
+  <text x="288" y="574" fill="#f5f5f5" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">planActionStep &amp; Verify Loop (Agent Runtime)</text>
+  <text x="288" y="590" fill="#8e98ac" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">Composes Boxes 2 -&gt; 3 -&gt; 8 -&gt; 4 -&gt; 5 with verifyCondition feedback loop</text>
   <rect x="56" y="608" width="224" height="16" rx="2" fill="#2d3142" stroke="rgba(245,245,245,0.08)" stroke-width="0.8"/>
-  <text x="168" y="619" fill="#bfc0c0" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle">IN: (goal, snapshot, plannerContext)</text>
+  <text x="168" y="619" fill="#bfc0c0" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle">IN: (goal, snapshot, plannerContext, maxAttempts?)</text>
   <rect x="288" y="608" width="232" height="16" rx="2" fill="#2d3142" stroke="rgba(245,245,245,0.08)" stroke-width="0.8"/>
-  <text x="404" y="619" fill="#6a95d8" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle">OUT: ActionPayload + Risk + Target</text>
+  <text x="404" y="619" fill="#6a95d8" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle">OUT: ActionPayload + Risk + Verified</text>
 
   <!-- Box 7: Browser Engine Boundary -->
   <rect x="632" y="544" width="480" height="108" rx="6" fill="#2d3142"/>
@@ -199,9 +199,9 @@
   <rect x="112" y="704" width="12" height="12" rx="2" fill="#393e53" stroke="#bfc0c0" stroke-width="1"/>
   <text x="132" y="714" fill="#f5f5f5" font-size="9" font-family="'Geist', sans-serif">Pure Functional Unit (Boxes 1-5, 6)</text>
 
-  <!-- Item 2: Focal WebGPU -->
+  <!-- Item 2: Focal Decision Fusion -->
   <rect x="368" y="704" width="12" height="12" rx="2" fill="rgba(240,138,89,0.10)" stroke="#f08a59" stroke-width="1.2"/>
-  <text x="388" y="714" fill="#f5f5f5" font-size="9" font-family="'Geist', sans-serif">WebGPU WGSL Decision Model (Box 8)</text>
+  <text x="388" y="714" fill="#f5f5f5" font-size="9" font-family="'Geist', sans-serif">Decision Fusion &amp; Weight Combination (Box 8)</text>
 
   <!-- Item 3: Impure Boundary -->
   <rect x="640" y="704" width="12" height="12" rx="2" fill="#393e53" stroke="#6a95d8" stroke-width="1"/>
@@ -213,5 +213,5 @@
 
   <!-- Item 5: Feedback -->
   <line x1="1024" y1="710" x2="1052" y2="710" stroke="#6a95d8" stroke-width="1" stroke-dasharray="4,4" marker-end="url(#arrow-link)"/>
-  <text x="1060" y="714" fill="#f5f5f5" font-size="9" font-family="'Geist', sans-serif">Result Feedback</text>
+  <text x="1060" y="714" fill="#f5f5f5" font-size="9" font-family="'Geist', sans-serif">Verify &amp; Result Feedback</text>
 </svg>

@@ -3,10 +3,9 @@
  * Bridges Chrome MV3 Extension or external clients to headless Playwright pages.
  */
 
-import wsPkg from 'ws';
+import { WebSocketServer } from 'ws';
 import { createKevin } from '../playwright/index.js';
-
-const WebSocketServer = (wsPkg as any).Server || (wsPkg as any).WebSocketServer || wsPkg;
+import { handleInferCommand } from './infer.js';
 
 export interface KevinDaemonOptions {
   port?: number;
@@ -134,6 +133,10 @@ export class KevinDaemon {
           }
           const result = await kevin.act(msg.goal);
           return { id, success: true, result };
+        }
+
+        case 'INFER': {
+          return await handleInferCommand(msg);
         }
 
         default:

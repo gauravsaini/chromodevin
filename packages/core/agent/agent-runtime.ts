@@ -38,7 +38,12 @@ export interface AgentRuntimeOptions {
   browserEngine?: BrowserEngine | any;
 }
 
-export interface RunTaskHandlers {
+export interface RunTaskOptions {
+  requireVerify?: boolean;
+  maxAttempts?: number;
+}
+
+export interface RunTaskHandlers extends RunTaskOptions {
   getSnapshot?: () => Promise<DOMSnapshot | any>;
   executeAction?: (payload: ActionPayload | any) => Promise<any>;
   onLog?: (msg: string, level?: string) => void;
@@ -129,10 +134,17 @@ export class AgentRuntime {
   /**
    * Executes a multi-step user goal to completion.
    */
-  async runTask(userGoal: any, handlers: RunTaskHandlers = {}): Promise<any> {
+  async runTask(
+    userGoal: any,
+    handlers: RunTaskHandlers = {},
+    options: RunTaskOptions = {}
+  ): Promise<any> {
     if (userGoal && typeof userGoal === 'object' && Symbol.asyncIterator in userGoal) {
       return this.runStream(userGoal, handlers);
     }
+
+    const requireVerify = options.requireVerify ?? handlers.requireVerify ?? false;
+    const maxAttempts = options.maxAttempts ?? handlers.maxAttempts ?? 3;
 
     const {
       getSnapshot,
@@ -160,143 +172,345 @@ export class AgentRuntime {
 
     let previousUrl = '';
 
-    while (this.currentStep < this.maxSteps && subGoalIndex < subGoals.length && !this.aborted) {
-      this.currentStep++;
-      const currentGoal = subGoals[subGoalIndex];
-      onLog(`--- Step ${this.currentStep} [Stage ${subGoalIndex + 1}/${subGoals.length}: "${currentGoal}"] ---`, 'system');
+    // If verification retry is NOT required, execute the standard byte-identical path
+    if (!requireVerify) {
+      while (this.currentStep < this.maxSteps && subGoalIndex < subGoals.length && !this.aborted) {
+        this.currentStep++;
+        const currentGoal = subGoals[subGoalIndex];
+        onLog(`--- Step ${this.currentStep} [Stage ${subGoalIndex + 1}/${subGoals.length}: "${currentGoal}"] ---`, 'system');
 
-      // 1. Perception: fetch active tab snapshot
-      this.setState(AgentState.PERCEIVING, onStateChange);
-      let snapshot: DOMSnapshot | null = null;
-      try {
-        if (getSnapshot) {
-          snapshot = await getSnapshot();
+        // 1. Perception: fetch active tab snapshot
+        this.setState(AgentState.PERCEIVING, onStateChange);
+        let snapshot: DOMSnapshot | null = null;
+        try {
+          if (getSnapshot) {
+            snapshot = await getSnapshot();
+          }
+        } catch (err: any) {
+          onLog(`Notice observing tab: ${err?.message}`, 'system');
         }
-      } catch (err: any) {
-        onLog(`Notice observing tab: ${err?.message}`, 'system');
-      }
 
-      const cleanSnapshot: DOMSnapshot = snapshot?.elements
-        ? snapshot
-        : { url: snapshot?.url || '', title: snapshot?.title || '', elements: [] };
+        const cleanSnapshot: DOMSnapshot = snapshot?.elements
+          ? snapshot
+          : { url: snapshot?.url || '', title: snapshot?.title || '', elements: [] };
 
-      if (previousUrl && cleanSnapshot.url && cleanSnapshot.url !== previousUrl) {
-        onLog(`Page context updated: ${cleanSnapshot.url}`, 'system');
-      }
-      if (cleanSnapshot.url) {
-        previousUrl = cleanSnapshot.url;
-      }
+        if (previousUrl && cleanSnapshot.url && cleanSnapshot.url !== previousUrl) {
+          onLog(`Page context updated: ${cleanSnapshot.url}`, 'system');
+        }
+        if (cleanSnapshot.url) {
+          previousUrl = cleanSnapshot.url;
+        }
 
-      // 2. Plan Action: generate pure action payload
-      this.setState(AgentState.DECIDING, onStateChange);
-      const payload = await this.planNextAction(currentGoal, cleanSnapshot);
-      const targetElement = payload.targetElement;
+        // 2. Plan Action: generate pure action payload
+        this.setState(AgentState.DECIDING, onStateChange);
+        const payload = await this.planNextAction(currentGoal, cleanSnapshot);
+        const targetElement = payload.targetElement;
 
-      // Handle direct WebMCP tool invocation
-      if (payload.action === 'webmcp' && payload.tool) {
-        onLog(`Found WebMCP tool "${payload.tool.name}". Invoking directly.`, 'action');
-        const toolResult = await this.webMcpClient.invokeTool(payload.tool, { goal: payload.goal });
-        if (toolResult.success) {
-          onLog(`WebMCP tool executed successfully.`, 'success');
+        // Handle direct WebMCP tool invocation
+        if (payload.action === 'webmcp' && payload.tool) {
+          onLog(`Found WebMCP tool "${payload.tool.name}". Invoking directly.`, 'action');
+          const toolResult = await this.webMcpClient.invokeTool(payload.tool, { goal: payload.goal });
+          if (toolResult.success) {
+            onLog(`WebMCP tool executed successfully.`, 'success');
+            subGoalIndex++;
+            if (subGoalIndex >= subGoals.length) {
+              this.setState(AgentState.COMPLETED, onStateChange);
+              return { success: true, message: `Completed all ${subGoals.length} sub-tasks` };
+            }
+            continue;
+          }
+        }
+
+        onLog(
+          `Decided: ${payload.action} ${payload.url || payload.targetId || ''} (${payload.explanation || ''})`,
+          'action'
+        );
+        onStep({
+          step: this.currentStep,
+          action: payload,
+          subGoal: currentGoal,
+          stage: subGoalIndex + 1,
+          totalStages: subGoals.length
+        });
+
+        // 3. Check for Task Completion
+        if (payload.action === 'done') {
           subGoalIndex++;
           if (subGoalIndex >= subGoals.length) {
+            onLog(`All stages finished: ${payload.explanation || 'Done'}`, 'success');
+            this.memory.addTurn('agent', payload.explanation || 'Task complete');
             this.setState(AgentState.COMPLETED, onStateChange);
-            return { success: true, message: `Completed all ${subGoals.length} sub-tasks` };
+            return { success: true, message: payload.explanation || 'Goal reached' };
           }
           continue;
         }
-      }
 
-      onLog(
-        `Decided: ${payload.action} ${payload.url || payload.targetId || ''} (${payload.explanation || ''})`,
-        'action'
-      );
-      onStep({
-        step: this.currentStep,
-        action: payload,
-        subGoal: currentGoal,
-        stage: subGoalIndex + 1,
-        totalStages: subGoals.length
-      });
+        // 4. Security / Risk Gate
+        if (payload.risk?.requiresConfirmation) {
+          this.setState(AgentState.CONFIRMING, onStateChange);
+          onLog(`⚠️ Confirmation required: ${payload.risk.reason}`, 'error');
+          const approved = await onConfirmationRequired({
+            action: payload,
+            candidate: targetElement,
+            reason: payload.risk.reason
+          });
 
-      // 3. Check for Task Completion
-      if (payload.action === 'done') {
-        subGoalIndex++;
-        if (subGoalIndex >= subGoals.length) {
-          onLog(`All stages finished: ${payload.explanation || 'Done'}`, 'success');
-          this.memory.addTurn('agent', payload.explanation || 'Task complete');
-          this.setState(AgentState.COMPLETED, onStateChange);
-          return { success: true, message: payload.explanation || 'Goal reached' };
+          if (!approved) {
+            onLog('Action rejected by user. Aborting task.', 'error');
+            this.setState(AgentState.ABORTED, onStateChange);
+            return { success: false, error: 'User rejected high-risk confirmation' };
+          }
         }
-        continue;
+
+        // 5. Final Browser Action Execution
+        this.setState(AgentState.EXECUTING, onStateChange);
+        if (this.aborted) break;
+
+        let result: any;
+        try {
+          result = executeAction ? await executeAction(payload) : await this.browserEngine.perform(payload);
+        } catch (err: any) {
+          result = { success: false, error: err?.message || String(err) };
+        }
+
+        // 6. Verification & recording
+        this.setState(AgentState.VERIFYING, onStateChange);
+        this.memory.recordAction(payload, result);
+
+        if (result.success) {
+          onLog(`Step ${this.currentStep} executed: ${result.message || 'OK'}`, 'success');
+          subGoalIndex++;
+
+          if (
+            payload.action === 'navigate' ||
+            payload.pressEnter ||
+            (payload.action === 'click' && (targetElement?.tag === 'a' || targetElement?.href))
+          ) {
+            await new Promise((r) => setTimeout(r, 1400));
+          } else {
+            await new Promise((r) => setTimeout(r, 600));
+          }
+        } else {
+          onLog(`Step ${this.currentStep} execution issue: ${result.error}`, 'error');
+          await new Promise((r) => setTimeout(r, 800));
+        }
       }
 
-      // 4. Security / Risk Gate
-      if (payload.risk?.requiresConfirmation) {
-        this.setState(AgentState.CONFIRMING, onStateChange);
-        onLog(`⚠️ Confirmation required: ${payload.risk.reason}`, 'error');
-        const approved = await onConfirmationRequired({
+      if (this.aborted) {
+        onLog('Task aborted by user.', 'system');
+        this.setState(AgentState.ABORTED, onStateChange);
+        return { success: false, aborted: true };
+      }
+
+      if (subGoalIndex >= subGoals.length) {
+        onLog(`Completed all ${subGoals.length} stages successfully!`, 'success');
+        this.setState(AgentState.COMPLETED, onStateChange);
+        return { success: true, message: `Completed all ${subGoals.length} stages` };
+      }
+
+      onLog(`Reached maximum step limit (${this.maxSteps}).`, 'system');
+      this.setState(AgentState.COMPLETED, onStateChange);
+      return { success: true, message: 'Reached step limit' };
+    }
+
+    // Verify-retry loop path (requireVerify: true)
+    let lastActionResult: any = null;
+
+    while (this.currentStep < this.maxSteps && subGoalIndex < subGoals.length && !this.aborted) {
+      const currentGoal = subGoals[subGoalIndex];
+      let attempt = 0;
+      let failureNote: string | undefined = undefined;
+      let stageVerified = false;
+
+      while (attempt < maxAttempts && this.currentStep < this.maxSteps && !this.aborted) {
+        attempt++;
+        this.currentStep++;
+        onLog(`--- Step ${this.currentStep} [Stage ${subGoalIndex + 1}/${subGoals.length} Attempt ${attempt}/${maxAttempts}: "${currentGoal}"] ---`, 'system');
+
+        // 1. Perception: fetch active tab snapshot
+        this.setState(AgentState.PERCEIVING, onStateChange);
+        let snapshot: DOMSnapshot | null = null;
+        try {
+          if (getSnapshot) {
+            snapshot = await getSnapshot();
+          }
+        } catch (err: any) {
+          onLog(`Notice observing tab: ${err?.message}`, 'system');
+        }
+
+        const cleanSnapshot: DOMSnapshot = snapshot?.elements
+          ? snapshot
+          : { url: snapshot?.url || '', title: snapshot?.title || '', elements: [] };
+
+        if (previousUrl && cleanSnapshot.url && cleanSnapshot.url !== previousUrl) {
+          onLog(`Page context updated: ${cleanSnapshot.url}`, 'system');
+        }
+        if (cleanSnapshot.url) {
+          previousUrl = cleanSnapshot.url;
+        }
+
+        // 2. Plan Action: replan with failure note appended to goal & context on retry
+        this.setState(AgentState.DECIDING, onStateChange);
+        const planGoal = failureNote ? `${currentGoal} (Note: previous attempt failed: ${failureNote})` : currentGoal;
+        const planContext = {
+          ...(failureNote ? { failureNote, lastFailure: failureNote } : {}),
+          attempt
+        };
+        const payload = await this.planNextAction(planGoal, cleanSnapshot, planContext);
+        const targetElement = payload.targetElement;
+
+        // Handle direct WebMCP tool invocation
+        if (payload.action === 'webmcp' && payload.tool) {
+          onLog(`Found WebMCP tool "${payload.tool.name}". Invoking directly.`, 'action');
+          const toolResult = await this.webMcpClient.invokeTool(payload.tool, { goal: payload.goal });
+          if (toolResult.success) {
+            onLog(`WebMCP tool executed successfully.`, 'success');
+            let freshSnapshot: DOMSnapshot = cleanSnapshot;
+            if (getSnapshot) {
+              try {
+                const fresh = await getSnapshot();
+                if (fresh) freshSnapshot = fresh;
+              } catch (_) {}
+            }
+            const verifyRes = verifyCondition(currentGoal, freshSnapshot);
+            if (verifyRes.satisfied) {
+              stageVerified = true;
+              lastActionResult = toolResult;
+              break;
+            } else {
+              failureNote = verifyRes.reason;
+              continue;
+            }
+          }
+        }
+
+        onLog(
+          `Decided: ${payload.action} ${payload.url || payload.targetId || ''} (${payload.explanation || ''})`,
+          'action'
+        );
+        onStep({
+          step: this.currentStep,
           action: payload,
-          candidate: targetElement,
-          reason: payload.risk.reason
+          subGoal: currentGoal,
+          stage: subGoalIndex + 1,
+          totalStages: subGoals.length
         });
 
-        if (!approved) {
-          onLog('Action rejected by user. Aborting task.', 'error');
-          this.setState(AgentState.ABORTED, onStateChange);
-          return { success: false, error: 'User rejected high-risk confirmation' };
+        // 3. Check for Task Completion
+        if (payload.action === 'done') {
+          const verifyRes = verifyCondition(currentGoal, cleanSnapshot);
+          if (verifyRes.satisfied) {
+            stageVerified = true;
+            lastActionResult = { success: true, message: payload.explanation || 'Done' };
+            break;
+          } else {
+            failureNote = verifyRes.reason;
+            onLog(`Verification failed on 'done' (attempt ${attempt}/${maxAttempts}): ${failureNote}`, 'warn');
+            continue;
+          }
         }
-      }
 
-      // 5. Final Browser Action Execution
-      this.setState(AgentState.EXECUTING, onStateChange);
-      if (this.aborted) break;
+        // 4. Security / Risk Gate
+        if (payload.risk?.requiresConfirmation) {
+          this.setState(AgentState.CONFIRMING, onStateChange);
+          onLog(`⚠️ Confirmation required: ${payload.risk.reason}`, 'error');
+          const approved = await onConfirmationRequired({
+            action: payload,
+            candidate: targetElement,
+            reason: payload.risk.reason
+          });
 
-      let result: any;
-      try {
-        result = executeAction ? await executeAction(payload) : await this.browserEngine.perform(payload);
-      } catch (err: any) {
-        result = { success: false, error: err?.message || String(err) };
-      }
+          if (!approved) {
+            onLog('Action rejected by user. Aborting task.', 'error');
+            this.setState(AgentState.ABORTED, onStateChange);
+            return { success: false, verified: false, error: 'User rejected high-risk confirmation' };
+          }
+        }
 
-      // 6. Verification & recording
-      this.setState(AgentState.VERIFYING, onStateChange);
-      this.memory.recordAction(payload, result);
+        // 5. Final Browser Action Execution
+        this.setState(AgentState.EXECUTING, onStateChange);
+        if (this.aborted) break;
 
-      if (result.success) {
-        onLog(`Step ${this.currentStep} executed: ${result.message || 'OK'}`, 'success');
-        subGoalIndex++;
+        let result: any;
+        try {
+          result = executeAction ? await executeAction(payload) : await this.browserEngine.perform(payload);
+        } catch (err: any) {
+          result = { success: false, error: err?.message || String(err) };
+        }
+        lastActionResult = result;
 
-        if (
-          payload.action === 'navigate' ||
-          payload.pressEnter ||
-          (payload.action === 'click' && (targetElement?.tag === 'a' || targetElement?.href))
-        ) {
-          await new Promise((r) => setTimeout(r, 1400));
+        // 6. Verification & recording
+        this.setState(AgentState.VERIFYING, onStateChange);
+        this.memory.recordAction(payload, result);
+
+        // Fetch fresh snapshot after act to verify
+        let freshSnapshot: DOMSnapshot = cleanSnapshot;
+        if (getSnapshot) {
+          try {
+            const fresh = await getSnapshot();
+            if (fresh) freshSnapshot = fresh;
+          } catch (err: any) {
+            onLog(`Notice observing tab after act: ${err?.message}`, 'system');
+          }
+        }
+
+        const verifyRes = verifyCondition(currentGoal, freshSnapshot);
+        if (verifyRes.satisfied) {
+          onLog(`Step ${this.currentStep} verified on attempt ${attempt}: ${verifyRes.reason}`, 'success');
+          stageVerified = true;
+          break;
         } else {
-          await new Promise((r) => setTimeout(r, 600));
+          failureNote = verifyRes.reason || 'Verification condition not met';
+          onLog(`Step ${this.currentStep} verify failed (attempt ${attempt}/${maxAttempts}): ${failureNote}`, 'warn');
         }
-      } else {
-        onLog(`Step ${this.currentStep} execution issue: ${result.error}`, 'error');
-        await new Promise((r) => setTimeout(r, 800));
       }
+
+      if (this.aborted) {
+        onLog('Task aborted by user.', 'system');
+        this.setState(AgentState.ABORTED, onStateChange);
+        return { success: false, aborted: true, verified: false };
+      }
+
+      if (!stageVerified) {
+        onLog(`Stage ${subGoalIndex + 1} exhausted ${maxAttempts} attempts without passing verification.`, 'error');
+        this.setState(AgentState.FAILED, onStateChange);
+        return {
+          ...(lastActionResult || {}),
+          success: false,
+          verified: false,
+          attempts: attempt,
+          error: lastActionResult?.error || failureNote || 'Verification condition not satisfied'
+        };
+      }
+
+      subGoalIndex++;
     }
 
     if (this.aborted) {
       onLog('Task aborted by user.', 'system');
       this.setState(AgentState.ABORTED, onStateChange);
-      return { success: false, aborted: true };
+      return { success: false, aborted: true, verified: false };
     }
 
     if (subGoalIndex >= subGoals.length) {
       onLog(`Completed all ${subGoals.length} stages successfully!`, 'success');
       this.setState(AgentState.COMPLETED, onStateChange);
-      return { success: true, message: `Completed all ${subGoals.length} stages` };
+      return {
+        ...(lastActionResult || {}),
+        success: true,
+        verified: true,
+        message: `Completed all ${subGoals.length} stages`
+      };
     }
 
     onLog(`Reached maximum step limit (${this.maxSteps}).`, 'system');
     this.setState(AgentState.COMPLETED, onStateChange);
-    return { success: true, message: 'Reached step limit' };
+    return {
+      ...(lastActionResult || {}),
+      success: false,
+      verified: false,
+      message: 'Reached step limit without completing all verification stages'
+    };
   }
 }
 
@@ -565,3 +779,154 @@ export function verifyCondition(
     reason: `Condition "${cond}" was not satisfied by page state`
   };
 }
+
+export interface PlanActVerifyParams {
+  goal: string;
+  condition?: string;
+  snapshot?: DOMSnapshot;
+  getSnapshot?: () => Promise<DOMSnapshot | any>;
+  executeAction?: (payload: ActionPayload | any) => Promise<any>;
+  browserEngine?: any;
+  decisionEngine?: any;
+  nanoClient?: any;
+  webMcpClient?: any;
+  memory?: any;
+  context?: Record<string, any>;
+  maxAttempts?: number;
+  onLog?: (msg: string, level?: string) => void;
+  onStep?: (stepInfo: any) => void;
+}
+
+export interface PlanActVerifyResult {
+  success: boolean;
+  verified: boolean;
+  attempts: number;
+  lastAction?: ActionPayload;
+  lastResult?: any;
+  lastSnapshot?: DOMSnapshot;
+  verification?: VerificationResult;
+  message?: string;
+  error?: string;
+}
+
+/**
+ * Executes a plan-act-verify step with bounded retries and failure context feedback.
+ */
+export async function planActVerifyStep(params: PlanActVerifyParams): Promise<PlanActVerifyResult> {
+  const maxAttempts = params.maxAttempts ?? 3;
+  const condition = params.condition || params.goal;
+  const onLog = params.onLog || (() => {});
+  const onStep = params.onStep || (() => {});
+
+  let attempt = 0;
+  let failureNote: string | undefined = undefined;
+  let lastResult: any = null;
+  let lastAction: ActionPayload | undefined = undefined;
+  let currentSnapshot: DOMSnapshot = params.snapshot?.elements
+    ? params.snapshot
+    : { url: params.snapshot?.url || '', title: params.snapshot?.title || '', elements: [] };
+  let verification: VerificationResult = { satisfied: false, reason: 'Not verified yet' };
+
+  while (attempt < maxAttempts) {
+    attempt++;
+    if (params.getSnapshot) {
+      try {
+        const fresh = await params.getSnapshot();
+        if (fresh) currentSnapshot = fresh;
+      } catch (err: any) {
+        onLog(`Notice fetching snapshot: ${err?.message}`, 'system');
+      }
+    }
+
+    const planGoal = failureNote ? `${params.goal} (Note: previous attempt failed: ${failureNote})` : params.goal;
+    const planContext = {
+      ...params.context,
+      ...(failureNote ? { failureNote, lastFailure: failureNote } : {}),
+      attempt
+    };
+
+    lastAction = await planActionStep({
+      goal: planGoal,
+      snapshot: currentSnapshot,
+      decisionEngine: params.decisionEngine,
+      nanoClient: params.nanoClient,
+      webMcpClient: params.webMcpClient,
+      context: planContext
+    });
+
+    onStep({ attempt, action: lastAction, goal: planGoal });
+
+    if (lastAction.action === 'done') {
+      verification = verifyCondition(condition, currentSnapshot);
+      if (verification.satisfied) {
+        return {
+          success: true,
+          verified: true,
+          attempts: attempt,
+          lastAction,
+          lastResult: { success: true, message: lastAction.explanation || 'Done' },
+          lastSnapshot: currentSnapshot,
+          verification,
+          message: lastAction.explanation || 'Done'
+        };
+      }
+      failureNote = verification.reason;
+      continue;
+    }
+
+    try {
+      if (params.executeAction) {
+        lastResult = await params.executeAction(lastAction);
+      } else if (params.browserEngine?.perform) {
+        lastResult = await params.browserEngine.perform(lastAction);
+      } else {
+        lastResult = { success: true };
+      }
+    } catch (err: any) {
+      lastResult = { success: false, error: err?.message || String(err) };
+    }
+
+    if (params.memory?.recordAction) {
+      params.memory.recordAction(lastAction, lastResult);
+    }
+
+    if (params.getSnapshot) {
+      try {
+        const fresh = await params.getSnapshot();
+        if (fresh) currentSnapshot = fresh;
+      } catch (err: any) {
+        onLog(`Notice fetching fresh snapshot after act: ${err?.message}`, 'system');
+      }
+    }
+
+    verification = verifyCondition(condition, currentSnapshot);
+    if (verification.satisfied) {
+      return {
+        success: lastResult?.success ?? true,
+        verified: true,
+        attempts: attempt,
+        lastAction,
+        lastResult,
+        lastSnapshot: currentSnapshot,
+        verification,
+        message: lastResult?.message || verification.reason
+      };
+    }
+
+    failureNote = verification.reason || 'Verification condition not met';
+    onLog(`Attempt ${attempt}/${maxAttempts} failed verification: ${failureNote}`, 'warn');
+  }
+
+  return {
+    success: false,
+    verified: false,
+    attempts: attempt,
+    lastAction,
+    lastResult,
+    lastSnapshot: currentSnapshot,
+    verification,
+    message: `Verification failed after ${attempt} attempts: ${failureNote}`,
+    error: lastResult?.error || failureNote
+  };
+}
+

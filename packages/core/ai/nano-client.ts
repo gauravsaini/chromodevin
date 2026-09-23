@@ -31,6 +31,62 @@ import type { ActionPayload, DOMElementCandidate, DOMSnapshot, DecisionModelOutp
 export { browserDecision };
 export type { KevinModelConfig, KevinModelTask, KevinModelDtype, KevinModelDevice, KevinFileConfig, ModelRef };
 
+export interface InferRequest {
+  id?: string;
+  type?: 'INFER' | string;
+  task: string;
+  input: string | string[];
+  labels?: string[];
+  model?: string;
+  device?: string;
+  dtype?: string;
+  [key: string]: any;
+}
+
+export interface InferOutput {
+  labels?: Array<{ label: string; score: number }> | string[];
+  text?: string;
+  candidateScores?: number[];
+  [key: string]: any;
+}
+
+export interface InferResponseSuccess {
+  id?: string;
+  success: true;
+  task: string;
+  output: InferOutput;
+  model?: string;
+  device?: string;
+  dtype?: string;
+  [key: string]: any;
+}
+
+export interface InferResponseFailure {
+  id?: string;
+  success: false;
+  error: string;
+  [key: string]: any;
+}
+
+export type InferResponse =
+  | InferResponseSuccess
+  | InferResponseFailure
+  | {
+      id?: string;
+      success?: boolean;
+      task?: string;
+      output?: any;
+      model?: string;
+      device?: string;
+      dtype?: string;
+      error?: string;
+      [key: string]: any;
+    };
+
+export interface InferenceTransport {
+  infer(req: InferRequest): Promise<InferResponse>;
+}
+
 export interface NanoClientOptions {
   /** Preferred: any HF id or full config (string shorthand or object). */
   model?: ModelRef;
@@ -47,6 +103,7 @@ export interface NanoClientOptions {
   config?: KevinFileConfig;
   onProgress?: (progress: any) => void;
   decisionRunner?: any;
+  transport?: InferenceTransport;
 }
 
 function candidateText(c: DOMElementCandidate): string {
@@ -73,9 +130,11 @@ export class NanoClient {
   public mode: 'decision' | 'generative';
   public onProgress: (progress: any) => void;
   public decisionRunner?: any;
+  public transport?: InferenceTransport;
 
   constructor(options: NanoClientOptions = {}) {
     this.generator = null;
+    this.transport = options.transport;
     this.modelConfig = parseModelRef(
       options.model ?? options.modelId ?? options.config?.model ?? DEFAULT_DECISION_MODEL,
       {
@@ -137,6 +196,46 @@ export class NanoClient {
     pageContext: { url?: string; title?: string } = {},
     candidates: DOMElementCandidate[] = []
   ): Promise<ModelOutputForDecision> {
+    if (this.transport) {
+      const task: string = this.modelConfig.task || 'text-classification';
+      const prompt = buildDecisionPrompt(userCommand, pageContext, candidates);
+
+      const req: InferRequest = {
+        type: 'INFER',
+        task,
+        input: prompt,
+        model: this.modelId,
+        device: this.modelConfig.device,
+        dtype: this.modelConfig.dtype
+      };
+
+      if (task === 'zero-shot-classification') {
+        req.labels = ['click', 'type', 'navigate', 'scroll', 'extract', 'press_key', 'hover', 'back', 'done'];
+      } else if (task === 'feature-extraction') {
+        const texts = candidates.slice(0, 20).map(candidateText);
+        req.input = [userCommand, ...texts];
+      }
+
+      const res = await this.transport.infer(req);
+      if (!res || res.success === false) {
+        throw new Error((res as any)?.error || 'Transport inference failed');
+      }
+
+      const output = res.output || {};
+      let labels = output.labels;
+      if (Array.isArray(labels) && labels.length > 0 && typeof labels[0] === 'string') {
+        labels = (labels as string[]).map((l: string) => ({ label: l, score: 1.0 }));
+      }
+
+      return {
+        task: res.task || task,
+        labels,
+        text: output.text,
+        candidateScores: output.candidateScores,
+        raw: output
+      };
+    }
+
     const pipe = await this.getSession();
     const task: string = pipe?.__kevinTask || this.modelConfig.task || 'text-classification';
     const prompt = buildDecisionPrompt(userCommand, pageContext, candidates);

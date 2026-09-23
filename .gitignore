@@ -6,3 +6,4 @@ dist/
 .env
 .agents/
 skills-lock.json
+.unlazy/

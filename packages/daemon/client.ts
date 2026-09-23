@@ -1,7 +1,4 @@
-/**
- * KevinDaemonClient: WebSocket client bridge for Chrome MV3 Extension and external tools.
- * Works seamlessly in both Node.js (via globalThis.WebSocket or ws) and browser environments.
- */
+import type { InferenceTransport, InferRequest, InferResponse } from '../core/ai/nano-client.js';
 
 export interface PendingRequest {
   resolve: (value: any) => void;
@@ -9,7 +6,9 @@ export interface PendingRequest {
   timeoutId: any;
 }
 
-export class KevinDaemonClient {
+export type { InferenceTransport, InferRequest, InferResponse };
+
+export class KevinDaemonClient implements InferenceTransport {
   public url: string;
   public options: any;
   public ws: any;
@@ -31,7 +30,7 @@ export class KevinDaemonClient {
       return true;
     }
 
-    const WebSocketImpl = globalThis.WebSocket || (await import('ws')).WebSocket;
+    const WebSocketImpl = globalThis.WebSocket || (await (import('ws') as Promise<any>)).WebSocket;
 
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
@@ -122,6 +121,11 @@ export class KevinDaemonClient {
 
   async act(goal: string, tabId?: string, url?: string): Promise<any> {
     return this.send('ACT', { goal, tabId, url });
+  }
+
+  async infer(req: InferRequest): Promise<InferResponse> {
+    const { id: _id, type: _type, ...payload } = req;
+    return this.send('INFER', payload);
   }
 
   close(): void {
