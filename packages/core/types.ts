@@ -127,6 +127,10 @@ export interface DecisionModelOutput {
     schemaGuaranteed: boolean;
     provider?: string;
     adapter?: string;
+    task?: string;
+    device?: string;
+    dtype?: string;
+    weightsFused?: boolean;
   };
 }
 

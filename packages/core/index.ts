@@ -18,14 +18,40 @@ export { normalizeBoundingBox, findElementAtPoint } from './perception/visual.js
 
 // AI
 export { NanoClient } from './ai/nano-client.js';
-export { browserDecision } from './ai/decision-model.js';
+export {
+  browserDecision,
+  describeModel,
+  normalizePipelineOutput,
+  applyClassificationBias,
+  cosineSimilarity,
+  rankWithEmbeddings
+} from './ai/decision-model.js';
+export type { ModelOutputForDecision, DescribedModel } from './ai/decision-model.js';
 export {
   loadModel,
   checkWebGPU,
   isModelLoaded,
+  parseModelRef,
+  lookupDecisionModel,
+  detectModelTask,
+  resolveTaskCandidates,
+  resolveDeviceOrder,
+  resolveDtypeCandidates,
+  getModelEnvDefaults,
   WebGPURequiredError,
   SUPPORTED_DECISION_MODELS,
-  DEFAULT_DECISION_MODEL
+  DEFAULT_DECISION_MODEL,
+  DEFAULT_TASK_CANDIDATES
+} from './ai/model-loader.js';
+export type {
+  KevinModelConfig,
+  KevinModelTask,
+  KevinModelDtype,
+  KevinModelDevice,
+  KevinFileConfig,
+  ModelRef,
+  LoadModelOptions,
+  DecisionModelSpec
 } from './ai/model-loader.js';
 
 // Actions

@@ -44,7 +44,16 @@ export {
 };
 
 export interface KevinPlaywrightOptions {
-  model?: string;
+  /**
+   * Any HF model: shorthand string ("org/name", optionally with
+   * ":revision#dtype@device" suffix) or full KevinModelConfig object.
+   * Extra dtype/device/revision/task fields below override the shorthand.
+   */
+  model?: string | import('../core/ai/model-loader.js').KevinModelConfig;
+  dtype?: string;
+  device?: string;
+  revision?: string;
+  task?: import('../core/ai/model-loader.js').KevinModelTask;
   maxSteps?: number;
   headless?: boolean;
   cache?: ActionCache;
@@ -92,8 +101,17 @@ export interface KevinPlaywrightAgent {
  * with Kevin AI primitives (act, observe, extract) and in-page WebGPU decision execution.
  */
 export async function createKevin(page: any, options: KevinPlaywrightOptions = {}): Promise<KevinPlaywrightAgent> {
-  const modelName = options.model || 'receptron/laya-onnx';
-  const webgpuRunner = options.webgpuRunner || new WebGPUDecisionRunner({ page, model: modelName, ...options });
+  const modelRef = options.model || 'receptron/laya-onnx';
+  const webgpuRunner =
+    options.webgpuRunner ||
+    new WebGPUDecisionRunner({
+      page,
+      model: modelRef as any,
+      dtype: options.dtype,
+      device: options.device,
+      revision: options.revision,
+      task: options.task as any
+    });
   await webgpuRunner.init();
 
   const engine = new PlaywrightBrowserEngine({ page, ...options });
@@ -105,7 +123,11 @@ export async function createKevin(page: any, options: KevinPlaywrightOptions = {
     options.nanoClient ||
     new NanoClient({
       mode: 'decision',
-      modelId: modelName,
+      model: modelRef as any,
+      dtype: options.dtype as any,
+      device: options.device as any,
+      revision: options.revision,
+      task: options.task as any,
       decisionRunner: webgpuRunner
     });
 

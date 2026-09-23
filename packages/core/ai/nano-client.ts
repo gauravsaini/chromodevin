@@ -1,34 +1,93 @@
 /**
  * Browser AI client for Kevin.
- * WebGPU + Decision Models (Laya, LFM2.5, Kev) via @huggingface/transformers.
+ * WebGPU + HF-compatible decision models via @huggingface/transformers.
  * Handles availability probes, model loading, structured JSON parsing,
- * and high-confidence heuristic fallback for deterministic commands.
+ * real pipeline inference (task-router), and high-confidence heuristic
+ * fallback for deterministic commands.
  */
 
 import { validateAction } from '../actions/action-schema.js';
-import { loadModel, checkWebGPU, DEFAULT_DECISION_MODEL } from './model-loader.js';
-import { browserDecision } from './decision-model.js';
+import {
+  loadModel,
+  checkWebGPU,
+  parseModelRef,
+  DEFAULT_DECISION_MODEL,
+  type KevinModelConfig,
+  type KevinModelTask,
+  type KevinModelDtype,
+  type KevinModelDevice,
+  type KevinFileConfig,
+  type ModelRef
+} from './model-loader.js';
+import {
+  browserDecision,
+  describeModel,
+  normalizePipelineOutput,
+  cosineSimilarity,
+  type ModelOutputForDecision
+} from './decision-model.js';
 import type { ActionPayload, DOMElementCandidate, DOMSnapshot, DecisionModelOutput } from '../types.js';
 
 export { browserDecision };
+export type { KevinModelConfig, KevinModelTask, KevinModelDtype, KevinModelDevice, KevinFileConfig, ModelRef };
 
 export interface NanoClientOptions {
+  /** Preferred: any HF id or full config (string shorthand or object). */
+  model?: ModelRef;
+  /** Legacy: bare model id string. */
   modelId?: string;
   mode?: 'decision' | 'generative';
+  dtype?: KevinModelDtype | string;
+  device?: KevinModelDevice | string;
+  revision?: string;
+  task?: KevinModelTask;
+  localBundle?: string;
+  localModelPath?: string;
+  allowLocalModels?: boolean;
+  config?: KevinFileConfig;
   onProgress?: (progress: any) => void;
   decisionRunner?: any;
+}
+
+function candidateText(c: DOMElementCandidate): string {
+  return [c.text, c.ariaLabel, c.name, c.placeholder, c.title].filter(Boolean).join(' ').slice(0, 200);
+}
+
+function buildDecisionPrompt(
+  userCommand: string,
+  pageContext: { url?: string; title?: string } = {},
+  candidates: DOMElementCandidate[] = []
+): string {
+  const cands = candidates.slice(0, 12).map((c) => `- [${c.id}] ${c.tag || c.role || '?'}: ${candidateText(c)}`).join('\n');
+  return [
+    `Goal: ${userCommand}`,
+    pageContext.url ? `Page: ${pageContext.url}${pageContext.title ? ` (${pageContext.title})` : ''}` : null,
+    cands ? `Candidates:\n${cands}` : null
+  ].filter(Boolean).join('\n');
 }
 
 export class NanoClient {
   public generator: any;
   public modelId: string;
+  public modelConfig: KevinModelConfig;
   public mode: 'decision' | 'generative';
   public onProgress: (progress: any) => void;
   public decisionRunner?: any;
 
   constructor(options: NanoClientOptions = {}) {
     this.generator = null;
-    this.modelId = options.modelId || DEFAULT_DECISION_MODEL;
+    this.modelConfig = parseModelRef(
+      options.model ?? options.modelId ?? options.config?.model ?? DEFAULT_DECISION_MODEL,
+      {
+        revision: options.revision ?? options.config?.revision,
+        task: (options.task ?? options.config?.task ?? 'auto') as KevinModelTask,
+        dtype: options.dtype ?? options.config?.dtype,
+        device: options.device ?? options.config?.device,
+        localBundle: options.localBundle,
+        localModelPath: options.localModelPath
+      }
+    );
+    this.modelId = this.modelConfig.id;
     this.mode = options.mode || 'decision';
     this.onProgress = options.onProgress || (() => {});
     this.decisionRunner = options.decisionRunner;
@@ -40,12 +99,13 @@ export class NanoClient {
 
   async getSession(): Promise<any> {
     if (this.generator) return this.generator;
-    this.generator = await loadModel({ modelId: this.modelId, onProgress: this.onProgress });
+    this.generator = await loadModel({ model: this.modelConfig, onProgress: this.onProgress });
     return this.generator;
   }
 
   /**
    * Plans action using the discriminative decision model (Kev / RLCD architecture).
+   * Sync path: deterministic heuristic baseline (offline-safe, no I/O).
    */
   planDecision(
     userCommand: string,
@@ -61,12 +121,61 @@ export class NanoClient {
         elements: candidates
       },
       questions,
-      model: this.generator || { id: this.modelId, mode: this.mode }
+      model: this.generator
+        ? { id: this.generator.__kevinModelId || this.modelId, task: this.generator.__kevinTask, device: this.generator.__kevinDevice, dtype: this.generator.__kevinDtype }
+        : { ...this.modelConfig }
     });
   }
 
   /**
-   * Plans action asynchronously, leveraging WebGPU hardware decision scoring when available.
+   * Runs one real pipeline inference and normalizes by task.
+   * classification labels → ACTION_SIGNALS, generation text → JSON action,
+   * feature-extraction embeddings → per-candidate cosine scores.
+   */
+  async runPipelineInference(
+    userCommand: string,
+    pageContext: { url?: string; title?: string } = {},
+    candidates: DOMElementCandidate[] = []
+  ): Promise<ModelOutputForDecision> {
+    const pipe = await this.getSession();
+    const task: string = pipe?.__kevinTask || this.modelConfig.task || 'text-classification';
+    const prompt = buildDecisionPrompt(userCommand, pageContext, candidates);
+
+    if (task === 'feature-extraction') {
+      const texts = candidates.slice(0, 20).map(candidateText);
+      const toList = (t: any) => (t && typeof t.tolist === 'function' ? t.tolist() : t);
+      const goalRaw = toList(await pipe(userCommand, { pooling: 'mean', normalize: true }));
+      const goalVec: number[] = Array.isArray(goalRaw?.[0]) ? goalRaw[0] : goalRaw;
+      let candidateScores: number[] = [];
+      if (texts.length > 0) {
+        const candRaw = toList(await pipe(texts, { pooling: 'mean', normalize: true }));
+        const rows: number[][] = Array.isArray(candRaw?.[0]) && typeof candRaw[0][0] === 'number'
+          ? candRaw
+          : Array.isArray(candRaw?.[0]) ? candRaw.map((r: any) => (Array.isArray(r) ? r : [])) : [];
+        candidateScores = rows.map((row) => cosineSimilarity(goalVec, row));
+      }
+      return { task, candidateScores, raw: { goalDim: goalVec?.length || 0 } };
+    }
+
+    if (task === 'text-generation') {
+      const raw = await pipe(prompt, { max_new_tokens: 128 });
+      return normalizePipelineOutput(task, raw);
+    }
+
+    if (task === 'zero-shot-classification') {
+      const labels = ['click', 'type', 'navigate', 'scroll', 'extract', 'press_key', 'hover', 'back', 'done'];
+      const raw = await pipe(prompt, labels);
+      return normalizePipelineOutput(task, raw);
+    }
+
+    // text-classification (default)
+    const raw = await pipe(prompt);
+    return normalizePipelineOutput(task, raw);
+  }
+
+  /**
+   * Plans action asynchronously: WebGPU runner → real pipeline weights →
+   * heuristic fallback. Never throws on model failure.
    */
   async planDecisionAsync(
     userCommand: string,
@@ -97,6 +206,39 @@ export class NanoClient {
           };
         }
       } catch {}
+    }
+
+    // Real-weights path: fuse live pipeline output into the decision.
+    try {
+      const modelOutput = await this.runPipelineInference(userCommand, pageContext, candidates);
+      const pipe = this.generator;
+      const described = describeModel({ id: this.modelId });
+      const decision = browserDecision({
+        state: {
+          goal: userCommand,
+          url: pageContext?.url || '',
+          title: pageContext?.title || '',
+          elements: candidates
+        },
+        questions,
+        model: { ...this.modelConfig },
+        modelOutput,
+        modelTask: modelOutput.task
+      });
+      const validation = validateAction(decision.action);
+      return {
+        answers: decision.answers,
+        action: validation.valid && validation.action ? validation.action : decision.action,
+        telemetry: {
+          ...decision.telemetry,
+          model: pipe?.__kevinModelId || this.modelId,
+          family: described.family,
+          device: pipe?.__kevinDevice,
+          dtype: pipe?.__kevinDtype
+        }
+      };
+    } catch {
+      // Offline / no-GPU / download failure → deterministic fallback.
     }
     return this.planDecision(userCommand, pageContext, candidates, questions);
   }

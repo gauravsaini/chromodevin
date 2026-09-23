@@ -10,6 +10,7 @@
  */
 
 import { rankCandidates } from '../perception/decision-engine.js';
+import { lookupDecisionModel } from './model-loader.js';
 import type {
   DOMSnapshot,
   DOMElementCandidate,
@@ -232,6 +233,164 @@ export interface BrowserDecisionParams {
   };
   questions?: Record<string, any> | null;
   model?: any;
+  /**
+   * Real pipeline output fused on top of heuristic scores.
+   * Lets any HF model steer the decision instead of heuristics alone:
+   * - text-classification: { labels: [{ label, score }] } → ACTION_SIGNALS boost
+   * - text-generation: { text } → JSON action parse + boost
+   * - feature-extraction: { candidateScores } → per-candidate logit boost
+   */
+  modelOutput?: ModelOutputForDecision | null;
+  modelTask?: string | null;
+}
+
+export interface ModelOutputForDecision {
+  task?: string;
+  /** text-classification / zero-shot: label distribution */
+  labels?: Array<{ label: string; score: number }>;
+  /** text-generation: decoded text (JSON action payload preferred) */
+  text?: string;
+  /** feature-extraction: per-candidate scores aligned with state.elements order */
+  candidateScores?: number[];
+  raw?: any;
+}
+
+export interface DescribedModel {
+  model: string;
+  family: string;
+  contract: string;
+  pipelineTag: string;
+}
+
+/**
+ * Generic model description. Registry hits return their preset
+ * family/contract; any other HF id derives a slug family so telemetry
+ * never breaks on unknown models.
+ */
+export function describeModel(model: any): DescribedModel {
+  const modelId = typeof model === 'string'
+    ? model
+    : (model?.modelId || model?.id || model?.__kevinModelId || 'onnx-community/LFM2.5-350M-ONNX');
+  const known = lookupDecisionModel(modelId);
+  if (known) {
+    return { model: known.id, family: known.family, contract: known.contract, pipelineTag: known.pipelineTag };
+  }
+  const slug = modelId.includes('/') ? modelId.split('/').slice(1).join('/').toLowerCase() : modelId.toLowerCase();
+  // Preserve legacy substring telemetry for ad-hoc refs.
+  if (slug.includes('laya')) return { model: modelId, family: 'laya', contract: '/v1/systemone', pipelineTag: 'text-classification' };
+  if (slug.includes('rlcd') || slug.includes('lfm2.5') || slug.includes('lfm')) {
+    return { model: modelId, family: 'rlcd-decision', contract: 'constrained-likelihood', pipelineTag: 'text-classification' };
+  }
+  if (slug.includes('kev') || slug.includes('qwen')) {
+    return { model: modelId, family: 'kev', contract: '/v1/systemone', pipelineTag: 'text-classification' };
+  }
+  const family = slug.replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 64) || 'generic';
+  const task = typeof model === 'object' && model?.task ? String(model.task) : 'text-classification';
+  return { model: modelId, family, contract: `generic:${task}`, pipelineTag: task };
+}
+
+/**
+ * Normalize raw @huggingface/transformers pipeline output into
+ * ModelOutputForDecision by task.
+ */
+export function normalizePipelineOutput(task: string, raw: any): ModelOutputForDecision {
+  const t = (task || '').toLowerCase();
+  if (t.includes('classif')) {
+    const flat = Array.isArray(raw) && Array.isArray(raw[0]) ? raw[0] : raw;
+    const labels = (Array.isArray(flat) ? flat : [])
+      .filter((o: any) => o && typeof o.label === 'string')
+      .map((o: any) => ({ label: String(o.label), score: Number(o.score) || 0 }));
+    return { task, labels, raw };
+  }
+  if (t.includes('generat')) {
+    const first = Array.isArray(raw) ? raw[0] : raw;
+    const text = typeof first === 'string' ? first : String(first?.generated_text ?? first?.text ?? '');
+    return { task, text, raw };
+  }
+  if (t.includes('feature') || t.includes('embed')) {
+    const arr = raw && typeof raw.tolist === 'function' ? raw.tolist() : raw;
+    const flat: number[] = Array.isArray(arr) && Array.isArray(arr[0]) && typeof arr[0][0] === 'number'
+      ? (arr as number[][]).map((row) => row.reduce((a, b) => a + b, 0) / Math.max(1, row.length))
+      : (Array.isArray(arr) ? (arr as number[]).map(Number) : []);
+    return { task, candidateScores: flat.filter((n) => Number.isFinite(n)), raw };
+  }
+  if (t.includes('zero-shot')) {
+    const obj = Array.isArray(raw) ? raw[0] : raw;
+    const labels = Array.isArray(obj?.labels)
+      ? obj.labels.map((label: string, i: number) => ({ label: String(label), score: Number(obj.scores?.[i]) || 0 }))
+      : [];
+    return { task, labels, raw };
+  }
+  return { task, raw };
+}
+
+/** Cosine similarity for embedding-based candidate ranking. */
+export function cosineSimilarity(a: number[], b: number[]): number {
+  if (!a?.length || !b?.length || a.length !== b.length) return 0;
+  let dot = 0, na = 0, nb = 0;
+  for (let i = 0; i < a.length; i++) {
+    dot += a[i] * b[i];
+    na += a[i] * a[i];
+    nb += b[i] * b[i];
+  }
+  if (!na || !nb) return 0;
+  return dot / (Math.sqrt(na) * Math.sqrt(nb));
+}
+
+/** Rank candidates by cosine of goal embedding vs per-candidate embeddings. */
+export function rankWithEmbeddings(
+  goalEmbedding: number[],
+  candidateEmbeddings: number[][],
+  candidateIds: string[]
+): Array<{ id: string; score: number }> {
+  return candidateIds.map((id, i) => ({
+    id,
+    score: cosineSimilarity(goalEmbedding, candidateEmbeddings[i] || [])
+  })).sort((a, b) => b.score - a.score);
+}
+
+function parseGeneratedAction(text: string): Record<string, any> | null {
+  if (!text) return null;
+  const cleaned = text.trim().replace(/^```(?:json)?/i, '').replace(/```$/, '').trim();
+  const start = cleaned.indexOf('{');
+  const end = cleaned.lastIndexOf('}');
+  if (start === -1 || end <= start) return null;
+  try {
+    const obj = JSON.parse(cleaned.slice(start, end + 1));
+    return obj && typeof obj === 'object' ? obj : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Fuse classification label distribution into heuristic action scores.
+ * Labels hit ACTION_SIGNALS (or the action name itself) proportionally.
+ */
+export function applyClassificationBias(
+  scores: Record<string, number>,
+  labels: Array<{ label: string; score: number }> | undefined,
+  weight = 10
+): Record<string, number> {
+  if (!labels?.length) return scores;
+  const out = { ...scores };
+  for (const { label, score } of labels) {
+    const l = String(label || '').toLowerCase();
+    if (!l || !(score > 0)) continue;
+    for (const [action, signals] of Object.entries(ACTION_SIGNALS)) {
+      if (l === action || l.includes(action) || action.includes(l)) {
+        out[action] = (out[action] || 0) + score * weight;
+        continue;
+      }
+      for (const signal of signals) {
+        if (l.includes(signal) || signal.includes(l)) {
+          out[action] = (out[action] || 0) + score * weight * 0.5;
+          break;
+        }
+      }
+    }
+  }
+  return out;
 }
 
 /**
@@ -242,7 +401,9 @@ export interface BrowserDecisionParams {
 export function browserDecision({
   state,
   questions = null,
-  model = null
+  model = null,
+  modelOutput = null,
+  modelTask = null
 }: BrowserDecisionParams = {}): DecisionModelOutput {
   const goal = state?.goal || '';
   const snapshot: DOMSnapshot = {
@@ -252,7 +413,20 @@ export function browserDecision({
   };
 
   // ── Question 1: What action type? (choice) ───────────────────
-  const actionScores = scoreActionTypes(goal, snapshot);
+  // Heuristic baseline first (deterministic, offline-safe), then fuse
+  // real model weights when modelOutput is provided (task-router path).
+  let actionScores = scoreActionTypes(goal, snapshot);
+  const fusedTask = modelOutput?.task || modelTask || null;
+  if (modelOutput?.labels?.length) {
+    actionScores = applyClassificationBias(actionScores, modelOutput.labels);
+  }
+  let generatedAction: Record<string, any> | null = null;
+  if (modelOutput?.text) {
+    generatedAction = parseGeneratedAction(modelOutput.text);
+    if (generatedAction && typeof generatedAction.action === 'string' && actionScores[generatedAction.action] !== undefined) {
+      actionScores[generatedAction.action] += 12;
+    }
+  }
   const actionKeys = Object.keys(actionScores);
   const actionLogits = actionKeys.map((k) => actionScores[k]);
   const actionProbs = softmax(actionLogits);
@@ -274,6 +448,29 @@ export function browserDecision({
   // ── Question 2: Which element? (choice) ─
   let targetAnswer: DecisionChoiceAnswer | null = null;
   const candidateScores = scoreCandidateElements(goal, snapshot);
+
+  // Fuse feature-extraction candidate scores (aligned with elements order).
+  // Cosine deltas are small ([-1, 1]) vs heuristic logits (~0-10), so scale
+  // up to let real weights steer when present (same strength as generation).
+  if (modelOutput?.candidateScores?.length && candidateScores.length > 0) {
+    const emb = modelOutput.candidateScores;
+    const scale = 8;
+    for (let i = 0; i < candidateScores.length && i < emb.length; i++) {
+      if (Number.isFinite(emb[i])) candidateScores[i].score += emb[i] * scale;
+    }
+    candidateScores.sort((a, b) => b.score - a.score);
+  }
+  // A generated JSON payload naming a real candidate id outranks heuristics.
+  if (generatedAction && typeof generatedAction.targetId === 'string') {
+    const genIdx = candidateScores.findIndex((c) => c.id === generatedAction!.targetId);
+    if (genIdx > 0) {
+      const [gen] = candidateScores.splice(genIdx, 1);
+      gen.score += 8;
+      candidateScores.unshift(gen);
+    } else if (genIdx === 0) {
+      candidateScores[0].score += 8;
+    }
+  }
 
   if (candidateScores.length > 0 && ['click', 'type', 'hover', 'press_key'].includes(chosenAction)) {
     const topN = candidateScores.slice(0, 10);
@@ -392,20 +589,26 @@ export function browserDecision({
     }
   }
 
-  const modelId = typeof model === 'string'
-    ? model
-    : (model?.modelId || model?.id || 'onnx-community/LFM2.5-350M-ONNX');
-  const isLaya = modelId.includes('laya');
-  const isRLCD = modelId.includes('LFM2.5') || modelId.includes('rlcd');
-  const family = isLaya ? 'laya' : (isRLCD ? 'rlcd-decision' : 'kev');
+  // Generated-text field overrides (text wins over heuristics on ties).
+  if (generatedAction) {
+    if (typeof generatedAction.text === 'string' && (payload.action === 'type')) {
+      payload.text = generatedAction.text;
+    }
+    if (typeof generatedAction.url === 'string' && payload.action === 'navigate') {
+      payload.url = generatedAction.url;
+    }
+  }
 
+  const described = describeModel(model);
   const telemetry = {
-    model: modelId,
-    family,
+    model: described.model,
+    family: described.family,
     mode: 'decision',
-    contract: isRLCD ? 'constrained-likelihood' : '/v1/systemone',
-    forwardCalls: 1,
-    schemaGuaranteed: true
+    contract: described.contract,
+    forwardCalls: modelOutput ? 2 : 1,
+    schemaGuaranteed: true,
+    task: fusedTask || described.pipelineTag,
+    weightsFused: Boolean(modelOutput)
   };
 
   return {

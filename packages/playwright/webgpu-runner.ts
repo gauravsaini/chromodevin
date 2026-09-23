@@ -4,8 +4,16 @@
  * directly on the browser's WebGPU device (Metal, Vulkan, Direct3D12) via page execution.
  */
 
-import { browserDecision } from '../core/ai/decision-model.js';
-import { SUPPORTED_DECISION_MODELS } from '../core/ai/model-loader.js';
+import { browserDecision, describeModel, type ModelOutputForDecision } from '../core/ai/decision-model.js';
+import {
+  SUPPORTED_DECISION_MODELS,
+  parseModelRef,
+  type KevinModelConfig,
+  type KevinModelTask,
+  type KevinModelDtype,
+  type KevinModelDevice,
+  type ModelRef
+} from '../core/ai/model-loader.js';
 import type { DOMSnapshot } from '../core/types.js';
 
 declare const GPUBufferUsage: any;
@@ -22,19 +30,48 @@ export const DEFAULT_WEBGPU_CHROMIUM_ARGS = [
 ];
 
 export interface WebGPUDecisionRunnerOptions {
-  model?: string;
+  /** Any HF id (shorthand string) or full KevinModelConfig object. */
+  model?: ModelRef;
+  dtype?: KevinModelDtype | string;
+  device?: KevinModelDevice | string;
+  revision?: string;
+  task?: KevinModelTask;
   page?: any;
 }
 
 export class WebGPUDecisionRunner {
-  public modelName: string;
+  public modelConfig: KevinModelConfig;
   public page?: any;
   public webgpuAvailable: boolean = false;
   public adapterInfo?: { architecture?: string; vendor?: string; name?: string };
 
   constructor(options: WebGPUDecisionRunnerOptions = {}) {
-    this.modelName = options.model || 'receptron/laya-onnx';
+    this.modelConfig = parseModelRef(options.model ?? 'receptron/laya-onnx', {
+      revision: options.revision,
+      task: options.task,
+      dtype: options.dtype,
+      device: options.device
+    });
     this.page = options.page;
+  }
+
+  /** Back-compat: resolved full HF id string. */
+  get modelName(): string {
+    return this.modelConfig.id;
+  }
+
+  set modelName(value: string) {
+    this.modelConfig = parseModelRef(value, {
+      revision: this.modelConfig.revision,
+      task: this.modelConfig.task,
+      dtype: this.modelConfig.dtype,
+      device: this.modelConfig.device
+    });
+  }
+
+  /** Resolved model config (id, revision, task, dtype, device). */
+  getModelConfig(): KevinModelConfig {
+    return { ...this.modelConfig };
   }
 
   /**
@@ -73,13 +110,14 @@ export class WebGPUDecisionRunner {
    * If a Playwright Page with WebGPU is active, dispatches a WGSL compute shader pass
    * directly to the browser's GPU hardware.
    */
-  async score(snapshot: DOMSnapshot, goal: string): Promise<any> {
+  async score(snapshot: DOMSnapshot, goal: string, pipelineOutput?: ModelOutputForDecision): Promise<any> {
     if (this.page && typeof this.page.evaluate === 'function') {
       try {
-        const gpuResult = await this.executeWebGPUCompute(snapshot, goal);
+        const gpuResult = await this.executeWebGPUCompute(snapshot, goal, pipelineOutput);
         if (gpuResult && gpuResult.success) {
           return {
             model: this.modelName,
+            family: describeModel({ ...this.modelConfig }).family,
             provider: 'webgpu',
             adapter: gpuResult.adapter || this.adapterInfo?.architecture || 'WebGPU Device',
             action: gpuResult.action,
@@ -92,7 +130,8 @@ export class WebGPUDecisionRunner {
       }
     }
 
-    // Pure contract System 1 scoring fallback (e.g. for mock test pages without real GPU)
+    // Pure contract System 1 scoring fallback (e.g. for mock test pages without real GPU).
+    // When pipelineOutput (real weights) is provided it is fused over heuristics.
     const decision = browserDecision({
       state: {
         goal,
@@ -100,11 +139,14 @@ export class WebGPUDecisionRunner {
         title: snapshot?.title || '',
         elements: snapshot?.elements || []
       },
-      model: { id: this.modelName }
+      model: { ...this.modelConfig },
+      modelOutput: pipelineOutput || null,
+      modelTask: pipelineOutput?.task || this.modelConfig.task || null
     });
 
     return {
       model: this.modelName,
+      family: describeModel({ ...this.modelConfig }).family,
       provider: this.webgpuAvailable ? 'webgpu' : 'systemone-js',
       action: decision.action,
       confidence: (decision as any).confidence,
@@ -115,7 +157,11 @@ export class WebGPUDecisionRunner {
   /**
    * Dispatches a WGSL compute shader to execute parallel logit scoring and softmax on WebGPU.
    */
-  private async executeWebGPUCompute(snapshot: DOMSnapshot, goal: string): Promise<any> {
+  private async executeWebGPUCompute(
+    snapshot: DOMSnapshot,
+    goal: string,
+    pipelineOutput?: ModelOutputForDecision
+  ): Promise<any> {
     const candidates = snapshot?.elements || [];
     if (!candidates.length) return null;
 
@@ -126,7 +172,9 @@ export class WebGPUDecisionRunner {
         title: snapshot?.title || '',
         elements: candidates
       },
-      model: { id: this.modelName }
+      model: { ...this.modelConfig },
+      modelOutput: pipelineOutput || null,
+      modelTask: pipelineOutput?.task || this.modelConfig.task || null
     });
     const rawScores = candidates.map((c) => {
       if (c.id === baseline?.action?.targetId) return 5.0;
