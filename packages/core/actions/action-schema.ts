@@ -4,6 +4,7 @@
  */
 
 import type { ActionPayload, ActionType, ActionValidationResult } from '../types.js';
+import { isAllowedNavigationUrl } from '../security/url-policy.js';
 
 export const SUPPORTED_ACTIONS: readonly ActionType[] = Object.freeze([
   'click',
@@ -79,6 +80,10 @@ export function validateAction(action: any): ActionValidationResult {
     case 'navigate':
       if (!normalized.url) {
         return { valid: false, error: 'Navigate action requires url' };
+      }
+      const navCheck = isAllowedNavigationUrl(normalized.url);
+      if (!navCheck.allowed) {
+        return { valid: false, error: navCheck.reason || 'Navigation URL is not allowed' };
       }
       break;
 

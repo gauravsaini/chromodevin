@@ -6,19 +6,28 @@ export interface PendingRequest {
   timeoutId: any;
 }
 
+export interface KevinDaemonClientOptions {
+  token?: string;
+  authToken?: string;
+  [key: string]: any;
+}
+
 export type { InferenceTransport, InferRequest, InferResponse };
 
 export class KevinDaemonClient implements InferenceTransport {
   public url: string;
-  public options: any;
+  public options: KevinDaemonClientOptions;
   public ws: any;
   public pending: Map<string, PendingRequest>;
   public nextId: number;
   public connected: boolean;
 
-  constructor(url = 'ws://127.0.0.1:9222', options: any = {}) {
+  constructor(url = 'ws://127.0.0.1:9222', options: KevinDaemonClientOptions = {}) {
     this.url = url;
-    this.options = options;
+    this.options = { ...options };
+    if (options.authToken && !this.options.token) {
+      this.options.token = options.authToken;
+    }
     this.ws = null;
     this.pending = new Map();
     this.nextId = 1;
@@ -55,6 +64,12 @@ export class KevinDaemonClient implements InferenceTransport {
               clearTimeout(timeoutId);
               this.pending.delete(msg.id);
               resolve(msg);
+            } else if (!msg.id && msg.success === false && msg.error) {
+              for (const [id, { reject, timeoutId }] of this.pending.entries()) {
+                clearTimeout(timeoutId);
+                reject(new Error(msg.error));
+              }
+              this.pending.clear();
             }
           } catch {
             // Ignore parse errors on broadcast
@@ -67,11 +82,12 @@ export class KevinDaemonClient implements InferenceTransport {
           reject(err);
         };
 
-        this.ws.onclose = () => {
+        this.ws.onclose = (event: any) => {
           this.connected = false;
+          const reason = event?.reason ? `: ${event.reason}` : '';
           for (const [id, { reject, timeoutId }] of this.pending.entries()) {
             clearTimeout(timeoutId);
-            reject(new Error('WebSocket connection closed'));
+            reject(new Error(`WebSocket connection closed${reason}`));
           }
           this.pending.clear();
         };
@@ -88,7 +104,11 @@ export class KevinDaemonClient implements InferenceTransport {
     }
 
     const id = `req-${this.nextId++}`;
-    const msg = { id, type, ...payload };
+    const msg: Record<string, any> = { id, type, ...payload };
+    const token = this.options.token || this.options.authToken;
+    if (token && msg.token === undefined) {
+      msg.token = token;
+    }
 
     return new Promise((resolve, reject) => {
       const timeoutId = setTimeout(() => {

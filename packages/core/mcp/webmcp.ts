@@ -48,7 +48,7 @@ export class WebMcpClient {
       .filter((t) => t.name.length > 0);
   }
 
-  findToolForGoal(tools: WebMcpTool[], userGoal: string): WebMcpTool | null {
+  findToolForGoal(tools: WebMcpTool[], userGoal: string, minMatches: number = 2): WebMcpTool | null {
     if (!tools || !tools.length || !userGoal) return null;
     const goalTokens = userGoal
       .toLowerCase()
@@ -62,19 +62,38 @@ export class WebMcpClient {
 
     for (const tool of tools) {
       const toolText = `${tool.name} ${tool.description || ''}`.toLowerCase();
+      const nameLower = tool.name.toLowerCase();
+      const nameTokens = tool.name
+        .replace(/([a-z])([A-Z])/g, '$1 $2')
+        .toLowerCase()
+        .replace(/[^a-z0-9]/g, ' ')
+        .split(/\s+/)
+        .filter((w) => w.length > 1);
+
       let matches = 0;
+      let hasNameMatch = false;
+
       for (const token of goalTokens) {
         if (toolText.includes(token)) {
           matches++;
         }
+        if (
+          nameTokens.includes(token) ||
+          nameLower === token ||
+          (token.length > 2 && nameLower.includes(token))
+        ) {
+          hasNameMatch = true;
+        }
       }
-      if (matches > maxMatches) {
+
+      const qualifies = matches >= minMatches || hasNameMatch;
+      if (qualifies && matches > maxMatches) {
         maxMatches = matches;
         bestTool = tool;
       }
     }
 
-    return maxMatches > 0 ? bestTool : null;
+    return bestTool;
   }
 
   async invokeTool(tool: WebMcpTool, args: any = {}): Promise<{ success: boolean; result?: any; error?: string }> {

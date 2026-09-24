@@ -94,12 +94,12 @@ test('3-Verb API: act() fast-path cache executes in <1ms and tracks hit count', 
 
 test('3-Verb API: observe(goal) returns action proposals and act(proposal) executes directly', async () => {
   const page = createMockPage([
-    { id: 'cd-1', role: 'button', text: 'Checkout Now', tag: 'button' },
+    { id: 'cd-1', role: 'button', text: 'Select Option', tag: 'button' },
     { id: 'cd-2', role: 'link', text: 'Continue Shopping', tag: 'a' }
   ]);
   const kevin = await createKevin(page);
 
-  const obs = await kevin.observe('Checkout Now');
+  const obs = await kevin.observe('Select Option');
   assert.ok(Array.isArray(obs.elements));
   assert.ok(Array.isArray(obs.proposals));
   assert.equal(obs.proposals.length, 1);
@@ -154,4 +154,57 @@ test('waitForDomSettle returns true on mock page', async () => {
   const page = createMockPage();
   const settled = await waitForDomSettle(page, { timeout: 200, idleWindow: 50 });
   assert.equal(typeof settled, 'boolean');
+});
+
+test('3-Verb API: direct act rejects invalid action payload', async () => {
+  const page = createMockPage();
+  const kevin = await createKevin(page);
+
+  // click without targetId or semantic target is invalid
+  const res = await kevin.act({ action: 'click' });
+  assert.strictEqual(res.success, false);
+  assert.strictEqual(res.cached, false);
+  assert.ok(res.error);
+
+  // unsupported action type is invalid
+  const res2 = await kevin.act({ action: 'unsupported_action_type' });
+  assert.strictEqual(res2.success, false);
+  assert.strictEqual(res2.cached, false);
+  assert.ok(res2.error);
+});
+
+test('3-Verb API: direct act high-risk without confirmation fails', async () => {
+  const page = createMockPage([
+    { id: 'cd-del', role: 'button', text: 'Delete Account', tag: 'button' }
+  ]);
+  const kevin = await createKevin(page);
+
+  const highRiskProposal = {
+    action: 'click',
+    targetId: 'cd-del',
+    text: 'Delete Account',
+    explanation: 'Confirm and delete account'
+  };
+
+  // Denied by default without onConfirmationRequired handler
+  const deniedRes = await kevin.act(highRiskProposal);
+  assert.strictEqual(deniedRes.success, false);
+  assert.strictEqual(deniedRes.cached, false);
+  assert.ok(deniedRes.error.includes('confirmation required') || deniedRes.error.includes('Confirmation required'));
+
+  // Denied if onConfirmationRequired returns false
+  const userRejectedRes = await kevin.act(highRiskProposal, {
+    onConfirmationRequired: async () => false
+  });
+  assert.strictEqual(userRejectedRes.success, false);
+  assert.strictEqual(userRejectedRes.cached, false);
+  assert.strictEqual(userRejectedRes.error, 'User rejected high-risk confirmation');
+
+  // Allowed when confirmed
+  const approvedRes = await kevin.act(highRiskProposal, {
+    onConfirmationRequired: async () => true
+  });
+  assert.strictEqual(approvedRes.success, true);
+  assert.strictEqual(approvedRes.cached, false);
+  assert.strictEqual(approvedRes.targetId, 'cd-del');
 });

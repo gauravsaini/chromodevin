@@ -65,3 +65,33 @@ test('AgentRuntime abort() cleanly stops execution loop', async () => {
   assert.strictEqual(runtime.aborted, true);
   assert.strictEqual(runtime.state, AgentState.ABORTED);
 });
+
+test('AgentRuntime fails and sets state FAILED when maxSteps is reached on incomplete task', async () => {
+  const runtime = new AgentRuntime({ maxSteps: 1 });
+
+  const mockSnapshot = {
+    url: 'https://test.local',
+    title: 'Test Page',
+    elements: [
+      { id: 'cd-1', tag: 'button', role: 'button', text: 'Search Now', rect: { x: 10, y: 10, width: 80, height: 30 } }
+    ]
+  };
+
+  const executedActions: any[] = [];
+
+  const result = await runtime.runTask('Open wikipedia.org and search for WebGPU', {
+    getSnapshot: async () => mockSnapshot,
+    executeAction: async (action: any) => {
+      executedActions.push(action);
+      return { success: true, message: `Executed ${action.action}` };
+    },
+    onStateChange: () => {},
+    onLog: () => {}
+  });
+
+  assert.strictEqual(result.success, false, 'Incomplete task cannot return success:true on maxSteps');
+  assert.strictEqual(runtime.state, AgentState.FAILED, 'Agent state must be FAILED on maxSteps exhaustion');
+  assert.strictEqual(executedActions.length, 1);
+  assert.ok(result.error);
+});
+

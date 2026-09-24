@@ -174,11 +174,20 @@
         }
 
         case 'navigate': {
-          if (url) {
-            window.location.href = url;
-            return { success: true, message: `Navigating to ${url}` };
+          if (!url || typeof url !== 'string' || !url.trim()) {
+            return { success: false, error: 'Missing URL for navigate' };
           }
-          return { success: false, error: 'Missing URL for navigate' };
+          try {
+            const parsed = new URL(url);
+            const protocol = parsed.protocol.toLowerCase();
+            if (protocol !== 'http:' && protocol !== 'https:') {
+              return { success: false, error: `Disallowed URL scheme: ${protocol}` };
+            }
+            window.location.href = parsed.href;
+            return { success: true, message: `Navigating to ${parsed.href}` };
+          } catch (e) {
+            return { success: false, error: `Invalid navigation URL: ${e.message}` };
+          }
         }
 
         case 'back': {

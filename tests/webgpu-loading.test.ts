@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert';
 import { checkWebGPU, loadModel, isModelLoaded, _resetForTest, DEFAULT_DECISION_MODEL, WebGPURequiredError } from '../src/ai/model-loader.js';
 import { NanoClient } from '../src/ai/nano-client.js';
+import { WebGPUDecisionRunner } from '../packages/playwright/webgpu-runner.js';
 
 test('WebGPU Model Loading: checkWebGPU probes hardware adapter in browser environment', async () => {
   if (!(globalThis as any).navigator) {
@@ -96,3 +97,69 @@ test('WebGPU Model Loading: strictly enforces WebGPU with no fallback (throws We
   assert.strictEqual(decision.action.targetId, 'cd-1');
   assert.strictEqual(decision.telemetry.contract, '/v1/systemone');
 });
+
+test('WebGPUDecisionRunner: score() falls back to baseline with gpuSelected: false when WebGPU is unavailable or fails', async () => {
+  const runner = new WebGPUDecisionRunner();
+  const snapshot = {
+    url: 'https://example.com',
+    title: 'Test Page',
+    elements: [
+      { id: 'btn-1', role: 'button', text: 'Search' },
+      { id: 'btn-2', role: 'button', text: 'Cancel' }
+    ]
+  };
+
+  const result = await runner.score(snapshot, 'Click Search');
+  assert.strictEqual(result.gpuSelected, false);
+  assert.strictEqual(result.provider, 'systemone-js');
+  assert.strictEqual(result.action.targetId, 'btn-1');
+
+  // Verify evaluate failure also falls back to baseline with gpuSelected: false
+  const failingRunner = new WebGPUDecisionRunner({
+    page: {
+      evaluate: async () => {
+        throw new Error('WebGPU error');
+      }
+    }
+  });
+  const fallbackResult = await failingRunner.score(snapshot, 'Click Search');
+  assert.strictEqual(fallbackResult.gpuSelected, false);
+  assert.strictEqual(fallbackResult.provider, 'systemone-js');
+  assert.strictEqual(fallbackResult.action.targetId, 'btn-1');
+});
+
+test('WebGPUDecisionRunner: retargets action to top candidate when GPU softmax selects different candidate', async () => {
+  const snapshot = {
+    url: 'https://example.com',
+    title: 'Test Page',
+    elements: [
+      { id: 'btn-search', role: 'button', text: 'Search' },
+      { id: 'btn-featured', role: 'button', text: 'Featured Products' }
+    ]
+  };
+
+  // Mock page whose evaluate returns GPU compute selecting btn-featured instead of baseline btn-search
+  const mockPage = {
+    evaluate: async (_fn: any, args: any) => {
+      return {
+        success: true,
+        adapter: 'apple-m3',
+        topCandidateId: 'btn-featured',
+        confidence: 0.965,
+        action: args.baselineAction,
+        answers: args.baselineAnswers
+      };
+    }
+  };
+
+  const runner = new WebGPUDecisionRunner({ page: mockPage });
+  const result = await runner.score(snapshot, 'Click Search');
+
+  assert.strictEqual(result.gpuSelected, true);
+  assert.strictEqual(result.provider, 'webgpu');
+  assert.strictEqual(result.action.action, 'click'); // preserved baseline action type
+  assert.strictEqual(result.action.targetId, 'btn-featured'); // retargeted to top candidate
+  assert.strictEqual(result.action.targetText, 'Featured Products');
+  assert.strictEqual(result.confidence, 0.965);
+});
+

@@ -1,6 +1,7 @@
 import { createKevin, type KevinPlaywrightAgent } from '../playwright/index.js';
 import { loadModel } from '../core/ai/model-loader.js';
 import { normalizePipelineOutput } from '../core/ai/decision-model.js';
+import { isAllowedNavigationUrl } from '../core/security/url-policy.js';
 
 export const MCP_TOOLS = [
   {
@@ -132,7 +133,7 @@ export async function handleJsonRpcRequest(
   message: JsonRpcRequest | any,
   context: McpContext | any = {}
 ): Promise<JsonRpcResponse | null> {
-  if (!message || typeof message !== 'object') {
+  if (!message || typeof message !== 'object' || Array.isArray(message)) {
     return {
       jsonrpc: '2.0',
       id: null,
@@ -140,13 +141,41 @@ export async function handleJsonRpcRequest(
     };
   }
 
-  const { id, method, params } = message;
+  const { id, method, params, jsonrpc } = message;
 
-  if (id === undefined || id === null) {
-    if (method === 'notifications/initialized') {
+  if (id === undefined) {
+    if (typeof method === 'string' && method.startsWith('notifications/')) {
       return null;
     }
-    return null;
+    return {
+      jsonrpc: '2.0',
+      id: null,
+      error: { code: -32600, message: 'Invalid Request: missing id' }
+    };
+  }
+
+  if (id !== null && typeof id !== 'string' && typeof id !== 'number') {
+    return {
+      jsonrpc: '2.0',
+      id: null,
+      error: { code: -32600, message: 'Invalid Request: id must be string, number, or null' }
+    };
+  }
+
+  if (jsonrpc !== '2.0') {
+    return {
+      jsonrpc: '2.0',
+      id,
+      error: { code: -32600, message: 'Invalid Request: jsonrpc must be "2.0"' }
+    };
+  }
+
+  if (typeof method !== 'string' || !method.trim()) {
+    return {
+      jsonrpc: '2.0',
+      id,
+      error: { code: -32600, message: 'Invalid Request: method must be a non-empty string' }
+    };
   }
 
   try {
@@ -173,13 +202,74 @@ export async function handleJsonRpcRequest(
         };
 
       case 'tools/call': {
-        const { name, arguments: toolArgs = {} } = params || {};
-        if (!name) {
+        if (!params || typeof params !== 'object' || Array.isArray(params)) {
           return {
             jsonrpc: '2.0',
             id,
-            error: { code: -32602, message: 'Missing required tool name' }
+            error: { code: -32602, message: 'Invalid params: params must be an object' }
           };
+        }
+
+        const { name } = params;
+        if (!name || typeof name !== 'string' || !name.trim()) {
+          return {
+            jsonrpc: '2.0',
+            id,
+            error: { code: -32602, message: 'Invalid params: missing required tool name' }
+          };
+        }
+
+        if (params.arguments === undefined || params.arguments === null || typeof params.arguments !== 'object' || Array.isArray(params.arguments)) {
+          return {
+            jsonrpc: '2.0',
+            id,
+            error: { code: -32602, message: 'Invalid params: missing or invalid tool arguments object' }
+          };
+        }
+
+        const toolArgs = params.arguments;
+
+        let serializedArgs: string;
+        try {
+          serializedArgs = JSON.stringify(toolArgs);
+        } catch {
+          return {
+            jsonrpc: '2.0',
+            id,
+            error: { code: -32602, message: 'Invalid params: arguments could not be serialized' }
+          };
+        }
+
+        if (Buffer.byteLength(serializedArgs, 'utf8') >= 64 * 1024) {
+          return {
+            jsonrpc: '2.0',
+            id,
+            error: { code: -32602, message: 'Invalid params: tool arguments size exceeds 64KB limit' }
+          };
+        }
+
+        if (name === 'kevin_navigate') {
+          if (toolArgs.url !== undefined && toolArgs.url !== null && toolArgs.url !== '') {
+            const check = isAllowedNavigationUrl(toolArgs.url);
+            if (!check.allowed) {
+              return {
+                jsonrpc: '2.0',
+                id,
+                error: { code: -32602, message: `Invalid params: ${check.reason || 'Navigation URL is not allowed'}` }
+              };
+            }
+          }
+        } else if (['kevin_act', 'kevin_observe', 'kevin_plan'].includes(name)) {
+          if (toolArgs.url !== undefined && toolArgs.url !== null && toolArgs.url !== '') {
+            const check = isAllowedNavigationUrl(toolArgs.url);
+            if (!check.allowed) {
+              return {
+                jsonrpc: '2.0',
+                id,
+                error: { code: -32602, message: `Invalid params: ${check.reason || 'Navigation URL is not allowed'}` }
+              };
+            }
+          }
         }
 
         const toolResult = await context.executeTool(name, toolArgs);
@@ -206,6 +296,13 @@ export async function handleJsonRpcRequest(
         };
     }
   } catch (err: any) {
+    if (err?.code === -32602) {
+      return {
+        jsonrpc: '2.0',
+        id,
+        error: { code: -32602, message: err.message || 'Invalid params' }
+      };
+    }
     return {
       jsonrpc: '2.0',
       id,
@@ -258,8 +355,15 @@ export class KevinMcpServer {
 
   async executeTool(name: string, args: Record<string, any> = {}): Promise<any> {
     if (name === 'kevin_infer') {
-      if (!args.task) throw new Error('Missing required argument: task');
-      if (args.input === undefined || args.input === null) throw new Error('Missing required argument: input');
+      if (!args.task || typeof args.task !== 'string' || !args.task.trim()) throw new Error('Missing required argument: task');
+      if (
+        args.input === undefined ||
+        args.input === null ||
+        (typeof args.input !== 'string' && !Array.isArray(args.input)) ||
+        (typeof args.input === 'string' && !args.input.trim())
+      ) {
+        throw new Error('Missing required argument: input');
+      }
 
       const device = args.device || 'auto';
       const modelRef = args.model;
@@ -290,6 +394,25 @@ export class KevinMcpServer {
       return normalized;
     }
 
+    if (name === 'kevin_navigate') {
+      if (!args.url || typeof args.url !== 'string' || !args.url.trim()) throw new Error('Missing required argument: url');
+      const check = isAllowedNavigationUrl(args.url);
+      if (!check.allowed) {
+        const err: any = new Error(`Invalid params: ${check.reason || 'Navigation URL is not allowed'}`);
+        err.code = -32602;
+        throw err;
+      }
+    } else if (['kevin_act', 'kevin_observe', 'kevin_plan'].includes(name)) {
+      if (args.url !== undefined && args.url !== null && args.url !== '') {
+        const check = isAllowedNavigationUrl(args.url);
+        if (!check.allowed) {
+          const err: any = new Error(`Invalid params: ${check.reason || 'Navigation URL is not allowed'}`);
+          err.code = -32602;
+          throw err;
+        }
+      }
+    }
+
     const page = await this.getPage();
     const kevin = await this.getKevin();
 
@@ -301,7 +424,7 @@ export class KevinMcpServer {
 
     switch (name) {
       case 'kevin_act': {
-        if (!args.goal) throw new Error('Missing required argument: goal');
+        if (!args.goal || typeof args.goal !== 'string' || !args.goal.trim()) throw new Error('Missing required argument: goal');
         return await kevin.act(args.goal);
       }
 
@@ -310,12 +433,18 @@ export class KevinMcpServer {
       }
 
       case 'kevin_plan': {
-        if (!args.goal) throw new Error('Missing required argument: goal');
+        if (!args.goal || typeof args.goal !== 'string' || !args.goal.trim()) throw new Error('Missing required argument: goal');
         return await kevin.plan(args.goal);
       }
 
       case 'kevin_navigate': {
-        if (!args.url) throw new Error('Missing required argument: url');
+        if (!args.url || typeof args.url !== 'string' || !args.url.trim()) throw new Error('Missing required argument: url');
+        const check = isAllowedNavigationUrl(args.url);
+        if (!check.allowed) {
+          const err: any = new Error(`Invalid params: ${check.reason || 'Navigation URL is not allowed'}`);
+          err.code = -32602;
+          throw err;
+        }
         if (typeof page.goto === 'function') {
           await page.goto(args.url, { waitUntil: 'domcontentloaded', timeout: 15000 });
         }

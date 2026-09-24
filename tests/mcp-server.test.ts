@@ -163,3 +163,110 @@ test('MCP: handles unknown tool error properly', async () => {
   assert.strictEqual(res!.result.isError, true);
   assert.ok(res!.result.content[0].text.includes('Unsupported tool'));
 });
+
+test('MCP: invalid jsonrpc version returns -32600', async () => {
+  const req1 = { jsonrpc: '1.0', id: 20, method: 'ping' };
+  const res1 = await handleJsonRpcRequest(req1);
+  assert.ok(res1 !== null);
+  assert.strictEqual(res1!.jsonrpc, '2.0');
+  assert.strictEqual(res1!.id, 20);
+  assert.strictEqual(res1!.error?.code, -32600);
+
+  const req2 = { id: 21, method: 'ping' };
+  const res2 = await handleJsonRpcRequest(req2);
+  assert.ok(res2 !== null);
+  assert.strictEqual(res2!.error?.code, -32600);
+});
+
+test('MCP: missing id returns -32600 unless notifications/*', async () => {
+  const req1 = { jsonrpc: '2.0', method: 'ping' };
+  const res1 = await handleJsonRpcRequest(req1);
+  assert.ok(res1 !== null);
+  assert.strictEqual(res1!.error?.code, -32600);
+
+  const req2 = { jsonrpc: '2.0', method: 'notifications/initialized' };
+  const res2 = await handleJsonRpcRequest(req2);
+  assert.strictEqual(res2, null);
+});
+
+test('MCP: unknown method returns -32601', async () => {
+  const req = { jsonrpc: '2.0', id: 22, method: 'unsupported/method' };
+  const res = await handleJsonRpcRequest(req);
+  assert.ok(res !== null);
+  assert.strictEqual(res!.error?.code, -32601);
+});
+
+test('MCP: tools/call missing name returns -32602', async () => {
+  const res = await handleJsonRpcRequest({
+    jsonrpc: '2.0',
+    id: 23,
+    method: 'tools/call',
+    params: {
+      arguments: {}
+    }
+  });
+
+  assert.ok(res !== null);
+  assert.strictEqual(res!.id, 23);
+  assert.strictEqual(res!.error?.code, -32602);
+});
+
+test('MCP: tools/call missing arguments object returns -32602', async () => {
+  const res = await handleJsonRpcRequest({
+    jsonrpc: '2.0',
+    id: 24,
+    method: 'tools/call',
+    params: { name: 'kevin_act' }
+  });
+  assert.ok(res !== null);
+  assert.strictEqual(res!.id, 24);
+  assert.strictEqual(res!.error?.code, -32602);
+});
+
+test('MCP: tools/call tool args exceeding 64KB returns -32602', async () => {
+  const hugePayload = 'x'.repeat(70 * 1024);
+  const sizeRes = await handleJsonRpcRequest({
+    jsonrpc: '2.0',
+    id: 25,
+    method: 'tools/call',
+    params: { name: 'kevin_act', arguments: { goal: hugePayload } }
+  });
+  assert.ok(sizeRes !== null);
+  assert.strictEqual(sizeRes!.id, 25);
+  assert.strictEqual(sizeRes!.error?.code, -32602);
+});
+
+test('MCP: tools/call validates required arguments per tool', async () => {
+  const mockPage = createMockPage();
+  const server = new KevinMcpServer({ page: mockPage });
+
+  // kevin_act missing goal
+  const actRes = await server.handleMessage({
+    jsonrpc: '2.0',
+    id: 26,
+    method: 'tools/call',
+    params: { name: 'kevin_act', arguments: {} }
+  });
+  assert.strictEqual(actRes?.result?.isError, true);
+  assert.ok(actRes?.result?.content[0].text.includes('Missing required argument: goal'));
+
+  // kevin_navigate missing url
+  const navRes = await server.handleMessage({
+    jsonrpc: '2.0',
+    id: 27,
+    method: 'tools/call',
+    params: { name: 'kevin_navigate', arguments: {} }
+  });
+  assert.strictEqual(navRes?.result?.isError, true);
+  assert.ok(navRes?.result?.content[0].text.includes('Missing required argument: url'));
+
+  // kevin_infer missing task
+  const inferRes = await server.handleMessage({
+    jsonrpc: '2.0',
+    id: 28,
+    method: 'tools/call',
+    params: { name: 'kevin_infer', arguments: { input: 'test' } }
+  });
+  assert.strictEqual(inferRes?.result?.isError, true);
+  assert.ok(inferRes?.result?.content[0].text.includes('Missing required argument: task'));
+});

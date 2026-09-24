@@ -309,8 +309,8 @@ export class AgentRuntime {
       }
 
       onLog(`Reached maximum step limit (${this.maxSteps}).`, 'system');
-      this.setState(AgentState.COMPLETED, onStateChange);
-      return { success: true, message: 'Reached step limit' };
+      this.setState(AgentState.FAILED, onStateChange);
+      return { success: false, error: `Reached maximum step limit (${this.maxSteps}) without completing task`, message: 'Reached step limit' };
     }
 
     // Verify-retry loop path (requireVerify: true)

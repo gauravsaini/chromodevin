@@ -136,3 +136,81 @@ test('PlaywrightBrowserEngine: handles invalid action payload gracefully', async
   assert.strictEqual(res.success, false);
   assert.ok(res.error);
 });
+
+test('PlaywrightBrowserEngine: returns failure when candidate locators are invisible', async () => {
+  const mockPage = {
+    locator() {
+      return {
+        first() {
+          return {
+            async isVisible() {
+              return false;
+            },
+            async scrollIntoViewIfNeeded() {},
+            async click() {
+              throw new Error('Should not be called for invisible element');
+            }
+          };
+        }
+      };
+    }
+  };
+
+  const engine = new PlaywrightBrowserEngine(mockPage);
+  const res = await engine.perform({ action: 'click', targetId: 'hidden-elem' });
+
+  assert.strictEqual(res.success, false);
+  assert.strictEqual(res.error, 'No usable locator executed');
+});
+
+test('PlaywrightBrowserEngine: returns failure when all fallback locators throw', async () => {
+  const mockPage = {
+    locator() {
+      return {
+        first() {
+          return {
+            async isVisible() {
+              return true;
+            },
+            async scrollIntoViewIfNeeded() {},
+            async click() {
+              throw new Error('Element detached from DOM');
+            }
+          };
+        }
+      };
+    }
+  };
+
+  const engine = new PlaywrightBrowserEngine(mockPage);
+  const res = await engine.perform({ action: 'click', targetId: 'stale-elem' });
+
+  assert.strictEqual(res.success, false);
+  assert.strictEqual(res.error, 'Element detached from DOM');
+});
+
+test('PlaywrightBrowserEngine: returns failure when page capability is missing', async () => {
+  const emptyPage = {};
+  const engine = new PlaywrightBrowserEngine(emptyPage);
+
+  const resScroll = await engine.perform({ action: 'scroll', direction: 'down' });
+  assert.strictEqual(resScroll.success, false);
+  assert.strictEqual(resScroll.error, 'No usable locator executed');
+
+  const resBack = await engine.perform({ action: 'back' });
+  assert.strictEqual(resBack.success, false);
+  assert.strictEqual(resBack.error, 'No usable locator executed');
+
+  const resForward = await engine.perform({ action: 'forward' });
+  assert.strictEqual(resForward.success, false);
+  assert.strictEqual(resForward.error, 'No usable locator executed');
+
+  const resPress = await engine.perform({ action: 'press_key', key: 'Enter' });
+  assert.strictEqual(resPress.success, false);
+  assert.strictEqual(resPress.error, 'No usable locator executed');
+
+  const resNavigate = await engine.perform({ action: 'navigate', url: 'https://example.com' });
+  assert.strictEqual(resNavigate.success, false);
+  assert.strictEqual(resNavigate.error, 'No usable locator executed');
+});
+

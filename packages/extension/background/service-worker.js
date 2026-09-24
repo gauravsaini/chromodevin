@@ -25,6 +25,95 @@ function isExcludedUrl(url) {
   );
 }
 
+function isPrivateHostname(hostname) {
+  if (!hostname || typeof hostname !== 'string') return false;
+  const cleanHost = hostname.trim().toLowerCase().replace(/^\[|\]$/g, '');
+  if (
+    cleanHost === 'localhost' ||
+    cleanHost.endsWith('.localhost') ||
+    cleanHost === 'local' ||
+    cleanHost.endsWith('.local') ||
+    cleanHost === 'internal' ||
+    cleanHost.endsWith('.internal')
+  ) {
+    return true;
+  }
+  if (
+    cleanHost === '::1' ||
+    cleanHost === '::' ||
+    cleanHost === '0:0:0:0:0:0:0:1' ||
+    cleanHost === '0:0:0:0:0:0:0:0' ||
+    cleanHost.startsWith('fc') ||
+    cleanHost.startsWith('fd') ||
+    cleanHost.startsWith('fe80:')
+  ) {
+    return true;
+  }
+  if (/^127(?:\.\d{1,3}){1,3}$/.test(cleanHost)) return true;
+  if (/^10(?:\.\d{1,3}){1,3}$/.test(cleanHost)) return true;
+  if (/^192\.168(?:\.\d{1,3}){1,2}$/.test(cleanHost)) return true;
+  const match172 = cleanHost.match(/^172\.(\d{1,3})(?:\.\d{1,3}){1,2}$/);
+  if (match172) {
+    const secondOctet = Number(match172[1]);
+    if (secondOctet >= 16 && secondOctet <= 31) return true;
+  }
+  if (/^169\.254(?:\.\d{1,3}){1,2}$/.test(cleanHost) || /^0(?:\.\d{1,3}){1,3}$/.test(cleanHost)) {
+    return true;
+  }
+  return false;
+}
+
+function isAllowedNavigationUrl(url, options = {}) {
+  if (!url || typeof url !== 'string' || url.trim().length === 0) {
+    return { allowed: false, reason: 'URL cannot be empty' };
+  }
+  if (/[\s\x00-\x1F\x7F]/.test(url)) {
+    return { allowed: false, reason: 'URL contains whitespace or control characters' };
+  }
+  let parsed;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return { allowed: false, reason: 'Invalid URL format' };
+  }
+  const protocol = parsed.protocol.toLowerCase();
+  if (protocol === 'file:') {
+    if (!options.allowFile) return { allowed: false, reason: 'Navigation to file: URLs is blocked' };
+    return { allowed: true };
+  }
+  if (protocol === 'blob:') {
+    if (!options.allowBlob) return { allowed: false, reason: 'Navigation to blob: URLs is blocked' };
+    return { allowed: true };
+  }
+  if (protocol === 'javascript:') {
+    return { allowed: false, reason: 'Navigation to javascript: URLs is blocked' };
+  }
+  if (protocol === 'data:') {
+    return { allowed: false, reason: 'Navigation to data: URLs is blocked' };
+  }
+  if (
+    protocol === 'chrome:' ||
+    protocol === 'chrome-extension:' ||
+    protocol === 'devtools:' ||
+    protocol === 'about:'
+  ) {
+    return { allowed: false, reason: `Navigation to ${protocol} URLs is blocked` };
+  }
+  if (protocol !== 'http:' && protocol !== 'https:') {
+    return { allowed: false, reason: `Disallowed URL protocol: "${protocol}"` };
+  }
+  if (!parsed.hostname) {
+    return { allowed: false, reason: 'URL is missing a valid hostname' };
+  }
+  if (!options.allowPrivateNetwork && isPrivateHostname(parsed.hostname)) {
+    return {
+      allowed: false,
+      reason: `Navigation to private network address (${parsed.hostname}) is blocked`
+    };
+  }
+  return { allowed: true };
+}
+
 /**
  * Synchronizes all open tabs from browser into local cache and persistent storage.
  */
@@ -375,6 +464,12 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
             return;
           }
 
+          const check = isAllowedNavigationUrl(action.url);
+          if (!check.allowed) {
+            sendResponse({ success: false, error: check.reason || 'Navigation URL is not allowed' });
+            return;
+          }
+
           await chrome.tabs.update(tab.id, { url: action.url });
           sendResponse({
             success: true,
@@ -416,7 +511,16 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
   if (request.type === 'NAVIGATE_TAB') {
     getTargetTab(request.tabId).then(async (tab) => {
-      if (tab?.id && request.url) {
+      if (!request.url) {
+        sendResponse({ success: false, error: 'No tab or invalid URL' });
+        return;
+      }
+      const check = isAllowedNavigationUrl(request.url);
+      if (!check.allowed) {
+        sendResponse({ success: false, error: check.reason || 'Navigation URL is not allowed' });
+        return;
+      }
+      if (tab?.id) {
         await chrome.tabs.update(tab.id, { url: request.url });
         sendResponse({ success: true, tabId: tab.id });
       } else {

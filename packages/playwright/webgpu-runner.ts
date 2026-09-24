@@ -122,7 +122,8 @@ export class WebGPUDecisionRunner {
             adapter: gpuResult.adapter || this.adapterInfo?.architecture || 'WebGPU Device',
             action: gpuResult.action,
             confidence: gpuResult.confidence,
-            answers: gpuResult.answers
+            answers: gpuResult.answers,
+            gpuSelected: true
           };
         }
       } catch {
@@ -132,6 +133,7 @@ export class WebGPUDecisionRunner {
 
     // Pure contract System 1 scoring fallback (e.g. for mock test pages without real GPU).
     // When pipelineOutput (real weights) is provided it is fused over heuristics.
+    // If GPU compute fails or is unavailable, cleanly fallback to baseline scoring with gpuSelected: false.
     const decision = browserDecision({
       state: {
         goal,
@@ -150,7 +152,8 @@ export class WebGPUDecisionRunner {
       provider: this.webgpuAvailable ? 'webgpu' : 'systemone-js',
       action: decision.action,
       confidence: (decision as any).confidence,
-      answers: decision.answers
+      answers: decision.answers,
+      gpuSelected: false
     };
   }
 
@@ -181,7 +184,7 @@ export class WebGPUDecisionRunner {
       return 1.0;
     });
 
-    return this.page.evaluate(
+    const gpuResult = await this.page.evaluate(
       async ({ candidates, rawScores, baselineAction, baselineAnswers }: any) => {
         const w = (typeof window !== 'undefined' ? window : (globalThis as any)) as any;
         if (!w.__kevin_webgpu) {
@@ -261,13 +264,43 @@ export class WebGPUDecisionRunner {
           if (probs[i] > probs[maxIdx]) maxIdx = i;
         }
 
+        const topCandidate = candidates[maxIdx];
+        const topCandidateId = topCandidate?.id;
+        const confidence = probs[maxIdx] || 0.95;
+
+        // WebGPU action-selection honesty:
+        // After GPU softmax reduction and argmax selection, if topCandidateId differs from baseline targetId,
+        // construct action from the top candidate (preserve baseline action type but retarget targetId/targetText
+        // to the top candidate, and update confidence). If GPU fails at any step, score() catches and falls back
+        // to pure contract System 1 heuristics (baseline).
+        let action = baselineAction;
+        if (baselineAction && topCandidate && topCandidateId && topCandidateId !== baselineAction.targetId) {
+          action = {
+            ...baselineAction,
+            targetId: topCandidateId,
+            targetText: topCandidate.text || topCandidate.ariaLabel || baselineAction.targetText || null
+          };
+        }
+
+        let answers = baselineAnswers;
+        if (answers?.targetElement && topCandidateId && answers.targetElement.choice !== topCandidateId) {
+          answers = {
+            ...answers,
+            targetElement: {
+              ...answers.targetElement,
+              choice: topCandidateId
+            }
+          };
+        }
+
         return {
           success: true,
           adapter: (adapter as any).info?.architecture || (adapter as any).info?.vendor || 'WebGPU Device',
-          topCandidateId: candidates[maxIdx]?.id,
-          confidence: probs[maxIdx] || 0.95,
-          action: baselineAction,
-          answers: baselineAnswers
+          topCandidateId,
+          confidence,
+          action,
+          answers,
+          gpuSelected: true
         };
       },
       {
@@ -277,6 +310,24 @@ export class WebGPUDecisionRunner {
         baselineAnswers: baseline?.answers
       }
     );
+
+    if (!gpuResult || !gpuResult.success) return gpuResult;
+
+    // WebGPU action-selection honesty host-side guard (handles mock/custom page.evaluate returns in tests):
+    if (baseline?.action && gpuResult.topCandidateId && gpuResult.topCandidateId !== baseline.action.targetId) {
+      const topCand = candidates.find((c) => c.id === gpuResult.topCandidateId);
+      gpuResult.action = {
+        ...baseline.action,
+        ...(gpuResult.action || {}),
+        targetId: gpuResult.topCandidateId,
+        targetText: topCand?.text || topCand?.ariaLabel || gpuResult.action?.targetText || baseline.action.targetText || null
+      };
+      if (gpuResult.confidence) {
+        gpuResult.action.confidence = gpuResult.confidence;
+      }
+    }
+
+    return gpuResult;
   }
 }
 

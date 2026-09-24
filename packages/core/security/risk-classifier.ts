@@ -116,3 +116,14 @@ export function sanitizePrompt(promptText: any): string {
     .replace(/ignore\s+all\s+previous\s+instructions/gi, '[ignored_suspicious_directive]')
     .trim();
 }
+
+export {
+  isAllowedNavigationUrl,
+  assertAllowedNavigationUrl,
+  isPrivateHostname
+} from './url-policy.js';
+export type {
+  NavigationUrlPolicyOptions,
+  NavigationUrlPolicyResult
+} from './url-policy.js';
+

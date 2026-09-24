@@ -26,6 +26,8 @@ import {
   computeCacheKey
 } from '../core/cache/action-cache.js';
 import { extractSchema } from '../core/actions/schema-extractor.js';
+import { validateAction } from '../core/actions/action-schema.js';
+import { classifyActionRisk } from '../core/security/risk-classifier.js';
 import type { ActionPayload, DOMSnapshot, VerificationResult } from '../core/types.js';
 
 export {
@@ -150,12 +152,57 @@ export async function createKevin(page: any, options: KevinPlaywrightOptions = {
 
     async act(goalOrProposal: string | ActionPayload | any, handlersOrOptions: KevinActOptions = {}) {
       if (typeof goalOrProposal === 'object' && goalOrProposal !== null && goalOrProposal.action) {
-        const result = await engine.perform(goalOrProposal);
+        const validation = validateAction(goalOrProposal);
+        if (!validation.valid) {
+          return {
+            success: false,
+            cached: false,
+            targetId: goalOrProposal.targetId,
+            action: goalOrProposal,
+            error: validation.error || 'Invalid action payload'
+          };
+        }
+
+        const actionToExecute = validation.action || goalOrProposal;
+        const candidate = goalOrProposal.targetElement || null;
+        const risk = classifyActionRisk(actionToExecute, candidate);
+        const requiresConfirmation = risk.requiresConfirmation || Boolean(goalOrProposal.risk?.requiresConfirmation);
+        const reason = risk.requiresConfirmation ? risk.reason : (goalOrProposal.risk?.reason || risk.reason);
+
+        if (requiresConfirmation) {
+          if (typeof handlersOrOptions.onConfirmationRequired !== 'function') {
+            return {
+              success: false,
+              cached: false,
+              targetId: actionToExecute.targetId,
+              action: actionToExecute,
+              error: `Action confirmation required: ${reason}`
+            };
+          }
+
+          const approved = await handlersOrOptions.onConfirmationRequired({
+            action: actionToExecute,
+            candidate,
+            reason
+          });
+
+          if (!approved) {
+            return {
+              success: false,
+              cached: false,
+              targetId: actionToExecute.targetId,
+              action: actionToExecute,
+              error: 'User rejected high-risk confirmation'
+            };
+          }
+        }
+
+        const result = await engine.perform(actionToExecute);
         return {
           success: result.success,
           cached: false,
-          targetId: goalOrProposal.targetId,
-          action: goalOrProposal,
+          targetId: actionToExecute.targetId,
+          action: actionToExecute,
           message: result.message,
           error: result.error
         };

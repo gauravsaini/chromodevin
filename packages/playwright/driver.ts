@@ -3,6 +3,7 @@
  */
 
 import type { ActionPayload } from '../core/types.js';
+import { isAllowedNavigationUrl } from '../core/security/url-policy.js';
 
 export interface PlaywrightBrowserEngineOptions {
   page?: any;
@@ -108,8 +109,22 @@ export class PlaywrightBrowserEngine {
           if (!payload.url) {
             return { success: false, error: 'Navigate action requires a valid URL' };
           }
+          const check = isAllowedNavigationUrl(payload.url);
+          if (!check.allowed) {
+            return { success: false, error: check.reason || 'Navigation URL is not allowed' };
+          }
+          let executed = false;
+          let lastError: any = null;
           if (typeof this.page.goto === 'function') {
-            await this.page.goto(payload.url, { waitUntil: 'domcontentloaded', timeout: 15000 });
+            try {
+              await this.page.goto(payload.url, { waitUntil: 'domcontentloaded', timeout: 15000 });
+              executed = true;
+            } catch (err) {
+              lastError = err;
+            }
+          }
+          if (!executed) {
+            return { success: false, error: lastError?.message || (lastError ? String(lastError) : 'No usable locator executed') };
           }
           return { success: true, message: `Navigated to ${payload.url}` };
         }
@@ -143,8 +158,8 @@ export class PlaywrightBrowserEngine {
             }
           }
 
-          if (!executed && lastError) {
-            return { success: false, error: lastError?.message || String(lastError) };
+          if (!executed) {
+            return { success: false, error: lastError?.message || (lastError ? String(lastError) : 'No usable locator executed') };
           }
 
           const targetDesc = payload.targetId || payload.targetText || 'element';
@@ -180,8 +195,8 @@ export class PlaywrightBrowserEngine {
             }
           }
 
-          if (!executed && lastError) {
-            return { success: false, error: lastError?.message || String(lastError) };
+          if (!executed) {
+            return { success: false, error: lastError?.message || (lastError ? String(lastError) : 'No usable locator executed') };
           }
 
           const targetDesc = payload.targetId || payload.targetText || 'element';
@@ -195,6 +210,7 @@ export class PlaywrightBrowserEngine {
           }
 
           let executed = false;
+          let lastError: any = null;
           for (const locator of locators) {
             try {
               const el = typeof locator.first === 'function' ? locator.first() : locator;
@@ -210,9 +226,13 @@ export class PlaywrightBrowserEngine {
                 executed = true;
                 break;
               }
-            } catch {
-              // try next fallback
+            } catch (err) {
+              lastError = err;
             }
+          }
+
+          if (!executed) {
+            return { success: false, error: lastError?.message || (lastError ? String(lastError) : 'No usable locator executed') };
           }
 
           const targetDesc = payload.targetId || payload.targetText || 'element';
@@ -227,6 +247,7 @@ export class PlaywrightBrowserEngine {
 
           const text = payload.text || '';
           let executed = false;
+          let lastError: any = null;
 
           for (const locator of locators) {
             try {
@@ -238,17 +259,26 @@ export class PlaywrightBrowserEngine {
               if (typeof el.scrollIntoViewIfNeeded === 'function') {
                 await el.scrollIntoViewIfNeeded({ timeout: this.defaultTimeout }).catch(() => {});
               }
+              let didAct = false;
               if (typeof el.fill === 'function') {
                 await el.fill(text, { timeout: this.defaultTimeout });
+                didAct = true;
               }
               if (payload.pressEnter && typeof el.press === 'function') {
                 await el.press('Enter', { timeout: this.defaultTimeout });
+                didAct = true;
               }
-              executed = true;
-              break;
-            } catch {
-              // try next fallback
+              if (didAct) {
+                executed = true;
+                break;
+              }
+            } catch (err) {
+              lastError = err;
             }
+          }
+
+          if (!executed) {
+            return { success: false, error: lastError?.message || (lastError ? String(lastError) : 'No usable locator executed') };
           }
 
           return { success: true, message: `Typed "${text}" into "${payload.targetId}"${payload.pressEnter ? ' and submitted' : ''}` };
@@ -257,38 +287,51 @@ export class PlaywrightBrowserEngine {
         case 'press_key': {
           const key = payload.key || payload.text || 'Enter';
           const locators = this.resolveCandidateLocators(payload);
-          let pressed = false;
+          let executed = false;
+          let lastError: any = null;
 
           if (locators.length > 0) {
             for (const locator of locators) {
               try {
                 const el = typeof locator.first === 'function' ? locator.first() : locator;
+                if (typeof el.isVisible === 'function') {
+                  const visible = await el.isVisible().catch(() => false);
+                  if (!visible) continue;
+                }
                 if (typeof el.press === 'function') {
                   await el.press(key, { timeout: this.defaultTimeout });
-                  pressed = true;
+                  executed = true;
                   break;
                 }
-              } catch {
-                // fallback
+              } catch (err) {
+                lastError = err;
               }
             }
           }
 
-          if (!pressed) {
-            if (this.page.keyboard && typeof this.page.keyboard.press === 'function') {
-              await this.page.keyboard.press(key);
-              pressed = true;
-            } else if (typeof this.page.evaluate === 'function') {
-              await this.page.evaluate((k: string) => {
-                const active = (document.activeElement as HTMLElement) || document.body || document;
-                if (active && typeof active.dispatchEvent === 'function') {
-                  active.dispatchEvent(new KeyboardEvent('keydown', { key: k, code: k, bubbles: true, cancelable: true }));
-                  active.dispatchEvent(new KeyboardEvent('keypress', { key: k, code: k, bubbles: true, cancelable: true }));
-                  active.dispatchEvent(new KeyboardEvent('keyup', { key: k, code: k, bubbles: true, cancelable: true }));
-                }
-              }, key);
-              pressed = true;
+          if (!executed) {
+            try {
+              if (this.page.keyboard && typeof this.page.keyboard.press === 'function') {
+                await this.page.keyboard.press(key);
+                executed = true;
+              } else if (typeof this.page.evaluate === 'function') {
+                await this.page.evaluate((k: string) => {
+                  const active = (document.activeElement as HTMLElement) || document.body || document;
+                  if (active && typeof active.dispatchEvent === 'function') {
+                    active.dispatchEvent(new KeyboardEvent('keydown', { key: k, code: k, bubbles: true, cancelable: true }));
+                    active.dispatchEvent(new KeyboardEvent('keypress', { key: k, code: k, bubbles: true, cancelable: true }));
+                    active.dispatchEvent(new KeyboardEvent('keyup', { key: k, code: k, bubbles: true, cancelable: true }));
+                  }
+                }, key);
+                executed = true;
+              }
+            } catch (err) {
+              lastError = err;
             }
+          }
+
+          if (!executed) {
+            return { success: false, error: lastError?.message || (lastError ? String(lastError) : 'No usable locator executed') };
           }
 
           return { success: true, message: `Pressed key "${key}"` };
@@ -297,24 +340,58 @@ export class PlaywrightBrowserEngine {
         case 'scroll': {
           const delta = payload.amount || 500;
           const direction = payload.direction === 'up' ? -delta : delta;
-          if (typeof this.page.evaluate === 'function') {
-            await this.page.evaluate((y: number) => window.scrollBy({ top: y, behavior: 'smooth' }), direction);
-          } else if (this.page.mouse && typeof this.page.mouse.wheel === 'function') {
-            await this.page.mouse.wheel(0, direction);
+          let executed = false;
+          let lastError: any = null;
+
+          try {
+            if (typeof this.page.evaluate === 'function') {
+              await this.page.evaluate((y: number) => window.scrollBy({ top: y, behavior: 'smooth' }), direction);
+              executed = true;
+            } else if (this.page.mouse && typeof this.page.mouse.wheel === 'function') {
+              await this.page.mouse.wheel(0, direction);
+              executed = true;
+            }
+          } catch (err) {
+            lastError = err;
           }
+
+          if (!executed) {
+            return { success: false, error: lastError?.message || (lastError ? String(lastError) : 'No usable locator executed') };
+          }
+
           return { success: true, message: `Scrolled ${payload.direction || 'down'} by ${delta}px` };
         }
 
         case 'back': {
+          let executed = false;
+          let lastError: any = null;
           if (typeof this.page.goBack === 'function') {
-            await this.page.goBack({ timeout: this.defaultTimeout }).catch(() => {});
+            try {
+              await this.page.goBack({ timeout: this.defaultTimeout });
+              executed = true;
+            } catch (err) {
+              lastError = err;
+            }
+          }
+          if (!executed) {
+            return { success: false, error: lastError?.message || (lastError ? String(lastError) : 'No usable locator executed') };
           }
           return { success: true, message: 'Navigated back in history' };
         }
 
         case 'forward': {
+          let executed = false;
+          let lastError: any = null;
           if (typeof this.page.goForward === 'function') {
-            await this.page.goForward({ timeout: this.defaultTimeout }).catch(() => {});
+            try {
+              await this.page.goForward({ timeout: this.defaultTimeout });
+              executed = true;
+            } catch (err) {
+              lastError = err;
+            }
+          }
+          if (!executed) {
+            return { success: false, error: lastError?.message || (lastError ? String(lastError) : 'No usable locator executed') };
           }
           return { success: true, message: 'Navigated forward in history' };
         }

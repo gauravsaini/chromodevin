@@ -12,3 +12,17 @@
 6. **Swarm execution**: 4 leaves via parallel `agyx` nodes under `/unlazy` gates (23/23 MET); new `agyx` PATH script replaced the `.zshrc` function.
 7. **Tests** (before → after): full suite 143/147 → 169/170 (only pre-existing `playwright-e2e` env failure; `ws` import fix healed daemon-bridge 3/3).
 8. **Files changed**: `packages/{core/ai,core/agent,daemon,mcp}`, `docs/*`, `README.md`, `scripts/verify-{docs,suite,typecheck}.mjs`, `tests/{daemon-infer,remote-infer,verify-loop}.test.ts`
+
+## UPDATED ON : 2026-09-24
+
+### feat (2026-09-24) — Hardened runtime, daemon security, URL policy, and MCP/driver validation
+
+1. **False-success & step-limit fix**: Driver tracks locator execution explicitly to prevent false positives when actions fail; `agent-runtime` marks state failed and returns `{success: false}` on max step exhaustion.
+2. **Daemon auth, queue & rate-limit**: Constant-time token verification (`KEVIN_DAEMON_TOKEN`), per-tab command serialization queue, rate limiting (60 req/min), and payload size guardrails.
+3. **URL policy creation & integration**: Built `url-policy.ts` SSRF/private-network guard; integrated into action schema validation to prevent unauthorized or dangerous browser navigations.
+4. **Direct act validation**: `createKevin.act()` validates payloads via `action-schema` and executes high-risk action confirmation hooks (`classifyActionRisk`) prior to engine execution.
+5. **MCP & WebMCP tightening**: Enforced strict JSON-RPC 2.0 conformance (id types, rpc versions, batch rejection); updated `WebMcpClient` tool matching with camelCase tokenization and min-match thresholds.
+6. **WebGPU honesty & README softening**: Documented realistic WebGPU hardware requirements and WASM/CPU fallback behavior; aligned README claims with local execution capabilities.
+7. **Follow-up / pnpm standardization**: Workspace currently relies on `yarn.lock` with yarn commands in README; migration to pnpm scheduled via import without lockfile churn.
+8. **Tests** (before → after): full suite 170/170 → 197+/197+ (reported passing across core, daemon, mcp, and playwright test suites).
+9. **Files changed**: `packages/core/{actions,agent,mcp,security}`, `packages/daemon/*`, `packages/mcp/server.ts`, `packages/playwright/*`, `tests/*`

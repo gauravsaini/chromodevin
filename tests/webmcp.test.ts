@@ -31,3 +31,32 @@ test('WebMcpClient invokes tool safely', async () => {
   assert.strictEqual(res.success, true);
   assert.strictEqual(res.result, 'pong 42');
 });
+
+test('WebMcpClient: single-token fuzzy description match no longer matches', () => {
+  const client = new WebMcpClient();
+  const tools = [
+    {
+      name: 'viewAccount',
+      description: 'Check your balance and pending transactions',
+      handler: async () => ({})
+    }
+  ];
+
+  // Single-token fuzzy match in description only ("transactions") does not match (requires >= 2)
+  const matched = client.findToolForGoal(tools, 'transactions');
+  assert.strictEqual(matched, null);
+
+  // Two token matches in description match
+  const matched2 = client.findToolForGoal(tools, 'balance transactions');
+  assert.notStrictEqual(matched2, null);
+  assert.strictEqual(matched2!.name, 'viewAccount');
+
+  // Name-token match allows matching even with single token
+  const matchedName = client.findToolForGoal(tools, 'account');
+  assert.notStrictEqual(matchedName, null);
+  assert.strictEqual(matchedName!.name, 'viewAccount');
+
+  // Custom minMatches option: requires 3 matches if specified
+  const matchedMin3 = client.findToolForGoal(tools, 'balance transactions', 3);
+  assert.strictEqual(matchedMin3, null);
+});
