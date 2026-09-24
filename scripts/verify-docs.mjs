@@ -84,9 +84,54 @@ function checkReadme() {
   }
 }
 
+const srcDir = path.join(repoRoot, 'src');
+
+function getTsFiles(dir) {
+  if (!fs.existsSync(dir)) return [];
+  const entries = fs.readdirSync(dir, { withFileTypes: true });
+  const files = [];
+  for (const entry of entries) {
+    const full = path.join(dir, entry.name);
+    if (entry.isDirectory()) {
+      files.push(...getTsFiles(full));
+    } else if (entry.isFile() && entry.name.endsWith('.ts')) {
+      files.push(full);
+    }
+  }
+  return files;
+}
+
+function checkSrcReexports() {
+  const tsFiles = getTsFiles(srcDir);
+  if (tsFiles.length === 0) {
+    failures.push(`No TypeScript files found under ${srcDir}`);
+    return;
+  }
+
+  for (const file of tsFiles) {
+    const relPath = path.relative(repoRoot, file);
+    const content = fs.readFileSync(file, 'utf8');
+    const stripped = content.replace(/\/\*[\s\S]*?\*\//g, '');
+    const lines = stripped.split('\n');
+
+    for (const line of lines) {
+      const code = line.replace(/\/\/.*$/, '').trim();
+      if (!code) continue;
+
+      const isReExport = /^export\s+(?:type\s+)?\*\s+from\s+['"][^'"]+['"];?$/.test(code);
+      const isImportType = /^import\s+type\s+.*?from\s+['"][^'"]+['"];?$/.test(code);
+
+      if (!isReExport && !isImportType) {
+        failures.push(`${relPath}: non-re-export line found: "${line.trim()}"`);
+      }
+    }
+  }
+}
+
 checkDocsFiles();
 checkLldHtml();
 checkReadme();
+checkSrcReexports();
 
 if (failures.length > 0) {
   console.error('Documentation verification failed:');

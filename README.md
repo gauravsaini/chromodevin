@@ -12,8 +12,8 @@
 **Kevin** flips the entire browser agent paradigm on its head:
 * **System 1 Discriminative Decision Models** (`receptron/laya-onnx`, `onnx-community/LFM2.5-350M-ONNX`, `jaredpalmer/kev-0.6b`): Evaluates candidate action likelihoods in a single forward pass (<15ms) instead of generating verbose text tokens.
 * **Onyx Microsecond Perception:** Prunes 500+ raw DOM/CDP nodes to Top-K actionable candidates in microseconds.
-* **$0 Token Cost & 100% Privacy:** Runs entirely on-device via WebGPU in Chrome or ONNX Runtime in Node.js. Zero HTML, user cookies, or pixels ever leave your machine.
-* **Sub-60ms Decision Loop:** Perception ➔ Ranking ➔ Argmax Decision ➔ Native Execution runs faster than human reaction time, 100% deterministic and offline.
+* **$0 Token Cost & Privacy:** Runs entirely on-device via WebGPU in Chrome or ONNX Runtime in Node.js; local-first default path, no cloud calls in default path. Zero HTML, user cookies, or pixels ever leave your machine.
+* **Sub-60ms Decision Loop:** Perception ➔ Ranking ➔ Argmax Decision ➔ Native Execution runs faster than human reaction time, deterministic argmax over ranked candidates and offline.
 
 ```text
 Large Model  = THINK     (High-level intent decomposition, recovery)
@@ -35,11 +35,13 @@ User         = AUTHORITY (Explicit risk gating, push-to-talk control)
 | **Total Action Loop Speed** | **<60ms** (pure) / **~165ms** (guarded CDP)| 4,000ms – 10,000ms | 3,000ms – 7,000ms | 5,000ms – 12,000ms | ~35ms |
 | **Cost per 1,000 Actions** | **$0.00 (0 tokens)** | $50.00 – $120.00+ | $30.00 – $75.00+ | $60.00 – $150.00+ | $0.00 |
 | **Cloud Dependency & Offline** | **100% Local (Air-Gapped)** | Requires Cloud API keys | Requires Cloud API keys | Requires Cloud API keys | Local |
-| **Data Privacy & Residency** | 🛡️ **Zero Data Exfiltration** | ❌ Sends screenshots to cloud | ❌ Sends full DOM & PII | ❌ Sends screen pixels | 🛡️ Local |
-| **Schema & Action Reliability** | 🎯 **100% Valid Schema (Argmax)** | ⚠️ Frequent JSON / parser drift | ⚠️ Occasional schema errors | ⚠️ Bounding box drift | N/A (Hardcoded) |
+| **Data Privacy & Residency** | 🛡️ **local-first default path, no cloud calls in default path** | ❌ Sends screenshots to cloud | ❌ Sends full DOM & PII | ❌ Sends screen pixels | 🛡️ Local |
+| **Schema & Action Reliability** | 🎯 **schema-validated via action-schema (invalid plans rejected)** | ⚠️ Frequent JSON / parser drift | ⚠️ Occasional schema errors | ⚠️ Bounding box drift | N/A (Hardcoded) |
 | **Supported Form Factors** | **Playwright, MV3, MCP, Daemon** | Python script only | Cloud API / Node.js only | Python / FastAPI only | Test scripts only |
 | **Natural Language Goals** | **Compound Multi-Step Decomposition** | Multi-step agent | Single & compound steps | Visual task planner | ❌ None |
 | **Security Risk Gating** | 🔒 **Deterministic Pure Risk Gate** | System prompt instructions | Basic prompt checks | Visual prompt guard | ❌ None |
+
+*Note: Benchmark and latency metrics are hardware/browser/sample-size dependent.*
 
 ---
 
@@ -100,7 +102,9 @@ Perception Engine: Onyx Microsecond Semantic Candidate Ranker
 ==============================================================================
 ```
 
-> **Takeaway:** With WebGPU enabled on Apple Silicon Metal-3 (or Vulkan / Direct3D12), Kevin compiles WGSL compute shaders directly into in-page VRAM. Decision forward passes and parallel softmax argmax reductions execute in **~3.69ms** with **zero cloud tokens** and **zero data exfiltration**, delivering a **50x–70x speedup** over cloud-hosted browser agents.
+> **Takeaway:** With WebGPU enabled on Apple Silicon Metal-3 (or Vulkan / Direct3D12), Kevin compiles WGSL compute shaders directly into in-page VRAM. Decision forward passes and parallel softmax argmax reductions execute in **~3.69ms** with **zero cloud tokens** and **zero data exfiltration**, delivering a measured on Apple Silicon Metal-3 headless run, see benchmark output below: **50x–70x speedup** over cloud-hosted browser agents.
+>
+> *Note: Benchmark results are hardware/browser/sample-size dependent.*
 
 ---
 
@@ -112,7 +116,7 @@ Paste this into your terminal to clone, verify, and run Kevin immediately:
 # 1. Clone & install
 git clone https://github.com/gauravsaini/kevin.git && cd kevin && yarn install
 
-# 2. Run all 29 test suites (100% passing, 0 cloud tokens needed)
+# 2. Run all test suites (202 tests passing via pnpm verify, 0 cloud tokens needed)
 yarn test
 
 # 3. Run typecheck & build
@@ -482,7 +486,7 @@ yarn run benchmark
 yarn run verify
 ```
 
-### Verified Test Suites (134 Tests Passing):
+### Verified Test Suites (202 tests passing via pnpm verify):
 * **Real-Browser Headless Chrome E2E:** `tests/playwright-e2e.test.ts`
 * **MCP Protocol Server & Tools:** `tests/mcp-server.test.ts`
 * **WebSocket Daemon & Bridge:** `tests/daemon-bridge.test.ts`

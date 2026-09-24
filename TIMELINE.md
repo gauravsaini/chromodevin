@@ -26,3 +26,13 @@
 7. **Follow-up / pnpm standardization**: Workspace currently relies on `yarn.lock` with yarn commands in README; migration to pnpm scheduled via import without lockfile churn.
 8. **Tests** (before → after): full suite 170/170 → 197+/197+ (reported passing across core, daemon, mcp, and playwright test suites).
 9. **Files changed**: `packages/core/{actions,agent,mcp,security}`, `packages/daemon/*`, `packages/mcp/server.ts`, `packages/playwright/*`, `tests/*`
+
+## UPDATED ON : 2026-09-24
+
+### chore (2026-09-24) — Wave 6 leftovers: README honesty, src guard, pnpm baseline
+
+1. **README honesty**: softened absolute claims to measured scope, env-dependent benchmark note.
+2. **src guard**: `packages/core` canonical, `src/` re-export facade enforced by `scripts/verify-docs.mjs` + `tests/src-guard.test.ts`.
+3. **pnpm baseline**: `packageManager: pnpm@10.28.2`, `pnpm-workspace.yaml`, `pnpm-lock.yaml` via `pnpm import`; `yarn.lock` kept.
+4. **Tests** (before → after): 202/202 → 203/203, `tsc` clean, `build` pass.
+5. **Files changed**: `README.md`, `scripts/verify-docs.mjs`, `src/index.ts`, `package.json`, `pnpm-workspace.yaml`, `tests/src-guard.test.ts`
