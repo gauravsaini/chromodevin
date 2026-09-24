@@ -12,7 +12,7 @@ const ALLOWLIST_PREFIXES = [
   'validation/validate-e2e.ts'
 ];
 
-execFile('npx', ['tsc', '--noEmit'], { cwd: new URL('..', import.meta.url), timeout: 180000 }, (err, stdout, stderr) => {
+execFile('pnpm', ['exec', 'tsc', '--noEmit'], { cwd: new URL('..', import.meta.url), timeout: 180000 }, (err, stdout, stderr) => {
   const lines = String(stdout || '') + '\n' + String(stderr || '');
   const errors = lines.split('\n').filter((l) => /\(\d+,\d+\): error TS/.test(l));
   const foreign = errors.filter((l) => !ALLOWLIST_PREFIXES.some((p) => l.includes(p)));

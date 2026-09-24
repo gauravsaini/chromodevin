@@ -13,7 +13,7 @@ const files = readdirSync(new URL('tests/', root))
   .sort()
   .map((f) => `tests/${f}`);
 
-execFile('npx', ['tsx', '--test', ...files],
+execFile('pnpm', ['exec', 'tsx', '--test', ...files],
   { cwd: root, timeout: 300000, maxBuffer: 32 * 1024 * 1024 },
   (_err, stdout, stderr) => {
     const out = String(stdout || '') + '\n' + String(stderr || '');
